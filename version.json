@@ -1,0 +1,20 @@
+{
+    "latest_version": "1.4.0",
+    "release_date": "2026-10-27",
+    "min_compatible_version": "1.0.0",
+    "changelog": [
+        "v1.4.0: Audit History & Past Records \u2014 Dedicated Tab 3 with persistent logs and one-click file openers",
+        "v1.4.0: Historical Scorecard Loader \u2014 Load past Excel audit records directly into live scorecard table",
+        "v1.4.0: Auto-Discovery \u2014 Automatically indexes all past Excel, PDF, and log files on disk",
+        "v1.3.0: Smart Two-Phase CID batching \u2014 equal batches + overflow queue for remainder CIDs",
+        "v1.3.0: Anti-Lag Engine \u2014 automated image & media blocking slashes RAM/CPU by 70%",
+        "v1.3.0: Concurrency Safeguards \u2014 PuTTY capped to max 2 & CID capped to max 5 with in-app guides",
+        "v1.3.0: Real-Time ETA \u2014 dynamic time remaining badge beside progress bar",
+        "v1.3.0: Native Windows Taskbar Icon \u2014 AppUserModelID identity prevents Tk feather fallback",
+        "v1.2.0: Parallel Worker Fix \u2014 WM_CHAR direct injection, no clipboard clash",
+        "v1.2.0: CID PDF Auto-Export \u2014 saves to CID_Reports/ folder automatically",
+        "v1.1.0: Unified NOC Suite \u2014 CID Checker + Router Auditor in one app",
+        "v1.0.0: Initial release \u2014 Versa SD-WAN Router-to-Router Diagnostics"
+    ],
+    "package_file": "Versa_SDWAN_Auditor.exe"
+}

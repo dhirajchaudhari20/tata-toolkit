@@ -1,0 +1,12 @@
+{
+    "latest_version": "1.0.0",
+    "release_date": "2026-10-27",
+    "min_compatible_version": "1.0.0",
+    "changelog": [
+        "Initial release - v1.0.0",
+        "Versa SD-WAN Router Health and Ping Auditor",
+        "Supports PAM Terminal, Bastion SSH, and Direct SSH modes",
+        "BGP, WAN Interface, VRRP diagnostics with Excel export"
+    ],
+    "package_file": "Versa_SDWAN_Auditor.exe"
+}

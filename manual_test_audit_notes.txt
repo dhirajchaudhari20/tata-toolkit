@@ -1,0 +1,128 @@
+====================================================================================================
+                        TATA COMMUNICATIONS - NETWORK OPERATIONS CENTER
+                  VERSA SD-WAN ROUTER-TO-ROUTER DIAGNOSTICS & AUDIT REPORT
+====================================================================================================
+Date of Execution : Friday, October 16, 2026
+Source Router     : 1074-KAIJSB-KOLHAPUR-R1 (Branch: Kolhapur - Kalyan Janata Sahakari Bank)
+Management IP     : 10.118.14.101
+Operator          : mcpeuser1 (via Jump Host: PU1PAMMCPSGW01)
+Versa Director    : VD-IFT-GRP1-01-PDC (10.29.11.32)
+Versa Release     : 22.1.4 (GA) - FlexVNF
+====================================================================================================
+
+1. WORKFLOW & COMMAND AUDIT (WHAT WAS DONE RIGHT & AREAS OF IMPROVEMENT)
+----------------------------------------------------------------------------------------------------
+
+[+] STEP 1: JUMP HOST & VERSA DIRECTOR ACCESS [PASSED]
+    • Command : ssh -l admin 10.29.11.32
+    • Action  : Jumped from bastion server (PU1PAMMCPSGW01) into Versa Director (10.29.11.32).
+    • Cli Mode: Successfully entered Director CLI using 'cli'.
+    • Status  : 100% CORRECT.
+
+[+] STEP 2: BRANCH ROUTER DISCOVERY [PASSED]
+    • Command : show devices list | match 1074-KAIJSB-KOLHAPUR-R1
+    • Output  : 1074-KAIJSB-KOLHAPUR-R1    10.118.14.101   -   netconf   unlocked
+    • Action  : Identified target branch management IP (10.118.14.101).
+    • Status  : 100% CORRECT. Standard best practice for dynamic IP discovery.
+
+[+] STEP 3: BRANCH ROUTER LOGIN & SHELL TRANSITION [PASSED]
+    • Command : ssh admin@10.118.14.101
+    • Action  : Connected to branch router and executed 'cli' to enter FlexVNF CLI mode.
+    • Prompt  : admin@1074-KAIJSB-KOLHAPUR-R1-cli>
+    • Status  : 100% CORRECT.
+
+[+] STEP 4: BGP UNDERLAY & TRANSPORT VRF IDENTIFICATION [PASSED]
+    • Command : show bgp neighbor brief
+    • Discovered Routing Instances:
+      1. MB-NET-Control-VR (Control Plane BGP Peering to Controllers: 10.118.0.10/14/38/42)
+      2. TCL-MPLS1-MB-Transport-VR (Transport Data Underlay VRF)
+    • BGP Neighbor IP (PE Router): 10.116.197.69
+    • Calculated Local Source IP (CE Router): 10.116.197.70 (Neighbor + 1 on /30 point-to-point)
+    • Status  : 100% CORRECT logic.
+
+[-] NOTE ON SYNTAX SLIP (LINE 119 OF LOG):
+    • You accidentally pasted:
+      "admin@1074-KAIJSB-KOLHAPUR-R1-cli> routing-instance: TCL-MPLS1-MB-Transport-VR"
+      Which triggered: "syntax error: expecting clear, commit, compare, ping, show..."
+    • Explanation: The header text was mistakenly copied into the CLI buffer. 
+      The automated Python script eliminates all such human copy-paste errors completely.
+
+[+] STEP 5: DESTINATION SITE SD-WAN DETAIL LOOKUP (PDC KHARGHAR R1) [PASSED]
+    • Command : show orgs org MB-NET sd-wan detail IFT-MB-3007-PDCKHR-R1
+    • Target Site  : IFT-MB-3007-PDCKHR-R1 (Primary Data Center Kharghar)
+    • State        : Connected (Uptime: 46d:22h:31m)
+    • Identified Public / DataPath IPs under NAT Status:
+      - Link 1 (TCL-MPLS1-MB) : 10.116.135.10 (Port 4790)
+      - Link 5 (TCL-MPLS2-MB) : 10.116.135.22 (Port 29479)
+    • Status  : 100% CORRECT extraction.
+
+[+] STEP 6: RAPID PING BENCHMARK TO PDC KHARGHAR R1 [PASSED]
+    • Test 1 (TCL-MPLS1):
+      Command : ping 10.116.135.10 source 10.116.197.70 routing-instance TCL-MPLS1-MB-Transport-VR rapid enable count 500 packet-size 1472 df-bit enable
+      Packets : 500 transmitted, 500 received -> 0% packet loss (PASS)
+      Latency : Min = 12.436 ms | Avg = 18.000 ms | Max = 60.968 ms (PASS: Avg 18.000 ms <= 50 ms)
+    • Test 2 (TCL-MPLS2):
+      Command : ping 10.116.135.22 source 10.116.197.70 routing-instance TCL-MPLS1-MB-Transport-VR rapid enable count 500 packet-size 1472 df-bit enable
+      Packets : 500 transmitted, 500 received -> 0% packet loss (PASS)
+      Latency : Min = 12.537 ms | Avg = 19.272 ms | Max = 53.172 ms (PASS: Avg 19.272 ms <= 50 ms)
+
+[+] STEP 7: DESTINATION SITE SD-WAN DETAIL LOOKUP (CCILDD R1) [PASSED]
+    • Command : show orgs org MB-NET sd-wan detail IFT-MB-3038-CCILDD-R1
+    • Target Site  : IFT-MB-3038-CCILDD-R1 (Data Center / CCILDD)
+    • State        : Connected (Uptime: 46d:22h:40m)
+    • Identified Public / DataPath IPs under NAT Status:
+      - Link 1 (TCL-MPLS1-MB) : 10.116.192.66  (Port 4790)
+      - Link 7 (TCL-MPLS2-MB) : 10.116.192.154 (Port 8248)
+    • Status  : 100% CORRECT extraction.
+
+[+] STEP 8: RAPID PING BENCHMARK TO CCILDD R1 [PASSED]
+    • Test 3 (TCL-MPLS1):
+      Command : ping 10.116.192.66 source 10.116.197.70 routing-instance TCL-MPLS1-MB-Transport-VR rapid enable count 500 packet-size 1472 df-bit enable
+      Packets : 500 transmitted, 500 received -> 0% packet loss (PASS)
+      Latency : Min = 11.536 ms | Avg = 16.635 ms | Max = 56.449 ms (PASS: Avg 16.635 ms <= 50 ms)
+    • Test 4 (TCL-MPLS2):
+      Command : ping 10.116.192.154 source 10.116.197.70 routing-instance TCL-MPLS1-MB-Transport-VR rapid enable count 500 packet-size 1472 df-bit enable
+      Packets : 500 transmitted, 500 received -> 0% packet loss (PASS)
+      Latency : Min = 13.292 ms | Avg = 20.811 ms | Max = 88.362 ms (PASS: Avg 20.811 ms <= 50 ms)
+
+
+====================================================================================================
+2. BENCHMARK SCORECARD SUMMARY (SLA THRESHOLDS: LOSS = 0%, AVG RTT <= 50ms)
+====================================================================================================
++---+----------------------+---------------+-----------------+------+------+--------+----------+--------+
+| # | Remote Site Name     | Link / Circuit| Destination IP  | Pkts | Loss | Avg RTT| SLA (50ms| Status |
++---+----------------------+---------------+-----------------+------+------+--------+----------+--------+
+| 1 | IFT-MB-3007-PDCKHR-R1| TCL-MPLS1-MB  | 10.116.135.10   | 500  |  0%  | 18.000 |  Passed  |  PASS  |
+| 2 | IFT-MB-3007-PDCKHR-R1| TCL-MPLS2-MB  | 10.116.135.22   | 500  |  0%  | 19.272 |  Passed  |  PASS  |
+| 3 | IFT-MB-3038-CCILDD-R1| TCL-MPLS1-MB  | 10.116.192.66   | 500  |  0%  | 16.635 |  Passed  |  PASS  |
+| 4 | IFT-MB-3038-CCILDD-R1| TCL-MPLS2-MB  | 10.116.192.154  | 500  |  0%  | 20.811 |  Passed  |  PASS  |
++---+----------------------+---------------+-----------------+------+------+--------+----------+--------+
+Overall Audit Result: ALL CIRCUITS COMPLIANT WITH ZERO PACKET LOSS AND LATENCY WELL UNDER 50 MS.
+
+
+====================================================================================================
+3. AUTOMATION LOGIC RULES ENCODED FOR PYTHON SCRIPT
+====================================================================================================
+1. Parameter: Source Branch Name (e.g. 1074-KAIJSB-KOLHAPUR-R1)
+2. Director Discovery: Connect to 10.29.11.32 -> run 'show devices list | match <branch>' -> Extract IP.
+3. Branch Login: Connect to branch IP -> enter 'cli'.
+4. Transport VRF & Source IP Discovery:
+   - Run 'show bgp neighbor brief'.
+   - Search for routing instance ending in '-Transport-VR' (e.g. TCL-MPLS1-MB-Transport-VR or TTSL).
+   - Extract Neighbor IP (e.g. 10.116.197.69).
+   - Derive Local Source IP: Neighbor IP + 1 (e.g. 10.116.197.70).
+5. Remote Sites Discovery & Ping Execution:
+   - For each target site (IFT-MB-3007-PDCKHR-R1, IFT-MB-3038-CCILDD-R1):
+     * Run 'show orgs org MB-NET sd-wan detail <site>'.
+     * Parse the 'NAT Status:' table for TCL-MPLS1-MB and TCL-MPLS2-MB (or TTSL-MPLS).
+     * Extract DataPath / Public IP.
+     * Execute MTU ping:
+       ping <dest_ip> source <source_ip> routing-instance <vrf> rapid enable count 500 packet-size 1472 df-bit enable
+     * Parse transmitted, received, loss %, and RTT (min/avg/max).
+     * Evaluate:
+       - Loss == 0% ? PASS : FAIL
+       - Avg Latency <= 50ms ? PASS : FAIL
+6. Report Generation:
+   - Save complete raw CLI console transcript to timestamped .log file.
+   - Generate structured Excel report (.xlsx) and CSV table for NOC auditing records.
+====================================================================================================

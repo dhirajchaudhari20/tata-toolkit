@@ -1,0 +1,15 @@
+First note down the bgp neighbor ip under routing instance
+routing-instance: TCL-MPLS1-MB-Transport-VR
+check TCL OR TTSL 
+
+run command --- show orgs org MB-NET sd-wan detail IFT-MB-3007-PDCKHR-R1 
+
+NAT STATUS KE NICHE WALA TCL MPLS 1 OR TTSL MPLS 1 note the ip for same
+run the command tcl mpls 1 or one increment to bgp 
+after check TCL MPLS 2 ip and bgp same as mpls 1 and check packet loss status and check avg status not more than 50 
+after check run command ---- show orgs org MB-NET sd-wan detail IFT-MB-3038-CCILDD-R1
+TCL MPLS 1 AND TCL MPLS 2
+
+and 
+
+

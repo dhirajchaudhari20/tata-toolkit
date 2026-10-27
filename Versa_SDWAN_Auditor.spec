@@ -1,0 +1,77 @@
+# -*- mode: python ; coding: utf-8 -*-
+
+a = Analysis(
+    ['versa_gui.py'],
+    pathex=[],
+    binaries=[],
+    datas=[
+        ('version.json', '.'),
+        ('user_sites.txt', '.'),
+        ('user_routers.txt', '.'),
+        ('logo.jpg', '.'),
+        ('logo_header.png', '.'),
+        ('app_icon.ico', '.')
+    ],
+    hiddenimports=[
+        'cid_checker_tab',
+        'history_tab',
+        'asyncio',
+        'playwright',
+        'playwright.async_api',
+        'updater',
+        'pyperclip',
+        'pandas',
+        'openpyxl',
+        'openpyxl.styles',
+        'openpyxl.chart',
+        'fpdf',
+        'fpdf.fpdf',
+        'fpdf',
+        'fpdf.fpdf',
+        'report_generator',
+        'evidence_viewer',
+        'webhook_notifier',
+        'PIL',
+        'PIL.Image',
+        'PIL.ImageTk',
+        'win32gui',
+        'win32con',
+        'pyautogui',
+        'paramiko'
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    optimize=0,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='Versa_SDWAN_Auditor',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon='app_icon.ico',
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='Versa_SDWAN_Auditor',
+)

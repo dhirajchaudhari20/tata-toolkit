@@ -1,0 +1,284 @@
+Using username "mcpeuser1".
+Authorized users only. All activity may be monitored and reported.
+Activate the web console with: systemctl enable --now cockpit.socket
+
+Register this system with Red Hat Insights: insights-client --register
+Create an account or view all your systems at https://red.ht/insights-dashboard
+Last login: Fri Oct 16 11:40:52 2026 from 100.76.198.218
+bash:  : command not found...
+[mcpeuser1@PU1PAMMCPSGW01 ~]$ ssh -l admin 10.29.11.32
+admin@10.29.11.32's password:
+===============================================================================
+WARNING!
+This is a Proprietary System
+You have accessed a Proprietary System
+
+If you are not authorized to use this computer system, you MUST log off now.
+Unauthorized use of this computer system, including unauthorized attempts or
+acts to deny service on, upload information to, download information from,
+change information on, or access a non-public site from, this computer system,
+are strictly prohibited and may be punishable under federal and state criminal
+and civil laws. All data contained on this computer systems may be monitored,
+intercepted, recorded, read, copied, or captured in any manner by authorized
+System personnel. System personnel may use or transfer this data as required or
+permitted under applicable law. Without limiting the previous sentence, system
+personnel may give to law enforcement officials any potential evidence of crime
+found on this computer system. Use of this system by any user, authorized or
+unauthorized, constitutes EXPRESS CONSENT to this monitoring, interception,
+recording, reading, copying, or capturing, and use and transfer. Please verify
+if this is the current version of the banner when deploying to the system.
+===============================================================================
+
+             .---.,
+            (      ``.
+       _     \        )    __      ________ _____   _____
+      (  `.   \      /     \ \    / /  ____|  __ \ / ____|  /\
+       \    `. )    /       \ \  / /| |__  | |__) | (___   /  \
+        \     |    /         \ \/ / |  __| |  _  / \___ \ / /\ \
+         \    |   /           \  /  | |____| | \ \ ____) / ____ \
+          \   |  /             \/   |______|_|  \_\_____/_/    \_\
+           \  | /
+            \_|/               ___ ___ ___ ___ ___ _____ ___  ___
+                              |   \_ _| _ \ __/ __|_   _/ _ \| _ \
+                              | |) | ||   / _| (__  | || (_) |   /
+                              |___/___|_|_\___\___| |_| \___/|_|_\
+
+
+
+Release     : 22.1.4 (GA)
+Release date: 20241220
+Package ID  : 7e70f98
+Last login: Fri Oct 16 11:39:58 2026 from 100.76.198.218
+admin@VD-IFT-GRP1-01-PDC:~$ cli
+
+             .---.,
+            (      ``.
+       _     \        )    __      ________ _____   _____
+      (  `.   \      /     \ \    / /  ____|  __ \ / ____|  /\
+       \    `. )    /       \ \  / /| |__  | |__) | (___   /  \
+        \     |    /         \ \/ / |  __| |  _  / \___ \ / /\ \
+         \    |   /           \  /  | |____| | \ \ ____) / ____ \
+          \   |  /             \/   |______|_|  \_\_____/_/    \_\
+           \  | /
+            \_|/               ___ ___ ___ ___ ___ _____ ___  ___
+                              |   \_ _| _ \ __/ __|_   _/ _ \| _ \
+                              | |) | ||   / _| (__  | || (_) |   /
+                              |___/___|_|_\___\___| |_| \___/|_|_\
+
+
+
+
+Administrator connected from 100.76.198.218 using ssh on VD-IFT-GRP1-01-PDC
+Administrator@VD-IFT-GRP1-01-PDC> show devices list | match 1074-KAIJSB-KOLHAPUR-R1
+1074-KAIJSB-KOLHAPUR-R1          10.118.14.101  -            netconf  unlocked
+[ok][2026-10-16 11:44:40]
+Administrator@VD-IFT-GRP1-01-PDC> ssh admin@10.118.14.101
+admin@10.118.14.101's password:
+             .---.,
+            (      ``.
+       _     \        )    __      ________ _____   _____
+      (  `.   \      /     \ \    / /  ____|  __ \ / ____|  /\
+       \    `. )    /       \ \  / /| |__  | |__) | (___   /  \
+        \     |    /         \ \/ / |  __| |  _  / \___ \ / /\ \
+         \    |   /           \  /  | |____| | \ \ ____) / ____ \
+          \   |  /             \/   |______|_|  \_\_____/_/    \_\
+           \  | /
+            \_|/                     ___ _    _____  ___   ___  _ ___
+                                    | __| |  | __\ \/ | \ / / \| | __|
+                                    | _|| |__| _| >  < \ V /| .` | _|
+                                    |_| |____|___/_/\_\ \_/ |_|\_|_|
+
+
+Versa FlexVNF software
+Release     :   22.1.4 (GA)
+Release date:   20260702
+Package ID  :   4e72b43
+
+Last login: Sat Oct 10 19:22:05 2026 from 172.22.170.11
+[admin@1074-KAIJSB-KOLHAPUR-R1: ~] $ cli
+
+
+             .---.,
+            (      ``.
+       _     \        )    __      ________ _____   _____
+      (  `.   \      /     \ \    / /  ____|  __ \ / ____|  /\
+       \    `. )    /       \ \  / /| |__  | |__) | (___   /  \
+        \     |    /         \ \/ / |  __| |  _  / \___ \ / /\ \
+         \    |   /           \  /  | |____| | \ \ ____) / ____ \
+          \   |  /             \/   |______|_|  \_\_____/_/    \_\
+           \  | /
+            \_|/                   _  _ ___ _______      _____  ___ _  _____
+                                  | \| | __|_   _\ \    / / _ \| _ \ |/ / __|
+                                  | .` | _|  | |  \ \/\/ / (_) |   / ' <\__ \
+                                  |_|\_|___| |_|   \_/\_/ \___/|_|_\_|\_\___/
+
+
+
+admin connected from 172.22.170.11 using ssh on 1074-KAIJSB-KOLHAPUR-R1
+admin@1074-KAIJSB-KOLHAPUR-R1-cli> show bgp neighbor brief
+routing-instance: MB-NET-Control-VR
+
+Neighbor        V  MsgRcvd   MsgSent    Uptime     State/PfxRcd  PfxSent AS
+10.118.0.10     4  551007    155746     6w4d22h    1192          7       64512
+10.118.0.14     4  552195    155761     6w4d22h    1192          7       64512
+10.118.0.38     4  560004    155686     5d17h00m   1192          7       64512
+10.118.0.42     4  556764    155755     5d16h59m   1192          7       64512
+
+routing-instance: TCL-MPLS1-MB-Transport-VR
+
+Neighbor        V  MsgRcvd   MsgSent    Uptime     State/PfxRcd  PfxSent AS
+10.116.197.69   4  135088    155294     3w0d23h    151           0       4755
+
+[ok][2026-10-16 11:45:24]
+admin@1074-KAIJSB-KOLHAPUR-R1-cli> show orgs org MB-NET sd-wan detail IFT-MB-3007-PDCKHR-R1
+
+==================================
+
+Site Id            -   102
+State              -   Connected
+Uptime             -   46d:22h:31m:44s
+Site Name          -   IFT-MB-3007-PDCKHR-R1
+Site Type          -   branch
+Chassis Id         -   AACA2348030
+Global Tenant Id   -   3
+Management IP      -   10.118.0.19
+SA Available       -   yes
+
+Secure Tunnel Info
+   Local Endpoint  -   10.118.14.101
+   Remote Endpoint -   10.118.0.19
+Plain Text Tunnel Info
+   Local Endpoint  -   10.118.14.100
+   Remote Endpoint -   10.118.0.18
+
+ LINK      LINK         ACCESS                                   LOCAL        LINK   SHAPING   MIN SHAPING
+   ID    FAMILY        CIRCUIT                                      IP  ENCRYPTION      RATE          RATE        TRANSPORT-DOMAINS
+----------------------------------------------------------------------------------------------------------------------------
+    3      ipv4 PGCIL-MPLS1-MB                            172.16.255.1    optional         0             0
+    4      ipv4    VI-MPLS1-MB                            172.16.255.1    optional         0             0
+    5      ipv4   TCL-MPLS2-MB                            172.16.255.1    optional         0             0  TCL-MPLS-MB
+    6      ipv4  TTSL-MPLS2-MB                            172.16.255.1    optional         0             0  TTSL-MPLS-MB
+    1      ipv4   TCL-MPLS1-MB                           10.116.135.10    optional         0             0  TCL-MPLS-MB
+    2      ipv4  TTSL-MPLS1-MB                           10.116.133.10    optional         0             0  TTSL-MPLS-MB
+    7      ipv4 PGCIL-MPLS2-MB                           10.116.134.22    optional         0             0
+    8      ipv4    VI-MPLS2-MB                           10.116.132.22    optional         0             0
+
+ NAT Status:
+
+ LINK      LINK         ACCESS     NAT                                  PUBLIC    PUBLIC                                DataPath  DataPath
+   ID    FAMILY        CIRCUIT  STATUS                                      IP      PORT                                      IP      PORT
+------------------------------------------------------------------------------------------------------------------------------------
+    3      ipv4 PGCIL-MPLS1-MB    true                           10.116.134.10     16578                           10.116.134.10     16578
+    4      ipv4    VI-MPLS1-MB    true                           10.116.132.10     19857                           10.116.132.10     19857
+    5      ipv4   TCL-MPLS2-MB    true                           10.116.135.22     29479                           10.116.135.22     29479
+    6      ipv4  TTSL-MPLS2-MB    true                           10.116.133.22      3715                           10.116.133.22      3715
+    1      ipv4   TCL-MPLS1-MB   false                           10.116.135.10      4790                           10.116.135.10      4790
+    2      ipv4  TTSL-MPLS1-MB   false                           10.116.133.10      4790                           10.116.133.10      4790
+    7      ipv4 PGCIL-MPLS2-MB   false                           10.116.134.22      4790                           10.116.134.22      4790
+    8      ipv4    VI-MPLS2-MB   false                           10.116.132.22      4790                           10.116.132.22      4790
+
+
+
+[ok][2026-10-16 11:46:10]
+admin@1074-KAIJSB-KOLHAPUR-R1-cli> routing-instance: TCL-MPLS1-MB-Transport-VR
+-----------------------------------^
+syntax error: expecting
+  clear      - Clear parameter
+  commit     - Confirm a pending commit
+  compare    - Compare running configuration to another configuration or a file
+  configure  - Manipulate software configuration information
+  exit       - Exit the management session
+  file       - Perform file operations
+  monitor    - Real-time debugging
+  mtr        - Trace a host with ping functionality
+  ping       - Ping a IPv4/IPv6 host
+  quit       - Exit the management session
+  request    - Make system-level requests
+  scp        - Securely copy a file to host
+  set        - Set CLI properties
+  shell      - Go to linux shell
+  show       - Show information about the system
+  ssh        - Secure shell connection to remote host
+  tcpdump    - tcpdump for interfaces
+  traceroute - Trace a host
+  wget       - Download file from Web/Host in a non-interactive way
+[error][2026-10-16 11:46:33]
+admin@1074-KAIJSB-KOLHAPUR-R1-cli> ping 10.116.135.10 source 10.116.197.70 routing-instance TCL-MPLS1-MB-Transport-VR rapid enable count 500 packet-size 1472 df-bit enable
+PING 10.116.135.10 (10.116.135.10) from 10.116.197.70 : 1472(1500) bytes of data.
+
+--- 10.116.135.10 ping statistics ---
+500 packets transmitted, 500 received, 0% packet loss, time 7724ms
+rtt min/avg/max/mdev = 12.436/18.000/60.968/5.763 ms, pipe 4, ipg/ewma 15.478/18.772 ms
+[ok][2026-10-16 11:51:21]
+admin@1074-KAIJSB-KOLHAPUR-R1-cli> ping 10.116.135.22 source 10.116.197.70 routing-instance TCL-MPLS1-MB-Transport-VR rapid enable count 500 packet-size 1472 df-bit enable
+PING 10.116.135.22 (10.116.135.22) from 10.116.197.70 : 1472(1500) bytes of data.
+
+--- 10.116.135.22 ping statistics ---
+500 packets transmitted, 500 received, 0% packet loss, time 7819ms
+rtt min/avg/max/mdev = 12.537/19.272/53.172/7.141 ms, pipe 4, ipg/ewma 15.670/16.557 ms
+[ok][2026-10-16 11:52:28]
+admin@1074-KAIJSB-KOLHAPUR-R1-cli> show orgs org MB-NET sd-wan detail IFT-MB-3038-CCILDD-R1
+
+==================================
+
+Site Id            -   607
+State              -   Connected
+Uptime             -   46d:22h:40m:15s
+Site Name          -   IFT-MB-3038-CCILDD-R1
+Site Type          -   branch
+Chassis Id         -   AACA2310018
+Global Tenant Id   -   3
+Management IP      -   10.118.16.21
+SA Available       -   yes
+
+Secure Tunnel Info
+   Local Endpoint  -   10.118.14.101
+   Remote Endpoint -   10.118.16.21
+Plain Text Tunnel Info
+   Local Endpoint  -   10.118.14.100
+   Remote Endpoint -   10.118.16.20
+
+ LINK      LINK         ACCESS                                   LOCAL        LINK   SHAPING   MIN SHAPING
+   ID    FAMILY        CIRCUIT                                      IP  ENCRYPTION      RATE          RATE        TRANSPORT-DOMAINS
+----------------------------------------------------------------------------------------------------------------------------
+    1      ipv4   TCL-MPLS1-MB                           10.116.192.66    optional         0             0  TCL-MPLS-MB
+    3      ipv4 PGCIL-MPLS2-MB                           10.116.141.50    optional         0             0
+    4      ipv4    VI-MPLS2-MB                           10.116.137.50    optional         0             0
+    5      ipv4 PGCIL-MPLS1-MB                            172.16.255.1    optional         0             0
+    6      ipv4    VI-MPLS1-MB                            172.16.255.1    optional         0             0
+    7      ipv4   TCL-MPLS2-MB                            172.16.255.1    optional         0             0  TCL-MPLS-MB
+    8      ipv4  TTSL-MPLS2-MB                            172.16.255.1    optional         0             0  TTSL-MPLS-MB
+    2      ipv4  TTSL-MPLS1-MB                           10.116.138.50    optional         0             0  TTSL-MPLS-MB
+
+ NAT Status:
+
+ LINK      LINK         ACCESS     NAT                                  PUBLIC    PUBLIC                                DataPath  DataPath
+   ID    FAMILY        CIRCUIT  STATUS                                      IP      PORT                                      IP      PORT
+------------------------------------------------------------------------------------------------------------------------------------
+    1      ipv4   TCL-MPLS1-MB   false                           10.116.192.66      4790                           10.116.192.66      4790
+    3      ipv4 PGCIL-MPLS2-MB   false                           10.116.141.50      4790                           10.116.141.50      4790
+    4      ipv4    VI-MPLS2-MB   false                           10.116.137.50      4790                           10.116.137.50      4790
+    5      ipv4 PGCIL-MPLS1-MB    true                           10.116.140.50      8856                           10.116.140.50      8856
+    6      ipv4    VI-MPLS1-MB    true                           10.116.136.50      4232                           10.116.136.50      4232
+    7      ipv4   TCL-MPLS2-MB    true                          10.116.192.154      8248                          10.116.192.154      8248
+    8      ipv4  TTSL-MPLS2-MB    true                           10.116.139.50     10829                           10.116.139.50     10829
+    2      ipv4  TTSL-MPLS1-MB   false                           10.116.138.50      4790                           10.116.138.50      4790
+
+
+
+[ok][2026-10-16 11:54:45]
+admin@1074-KAIJSB-KOLHAPUR-R1-cli> ping 10.116.192.66  source 10.116.197.70 routing-instance TCL-MPLS1-MB-Transport-VR rapid enable count 500 packet-size 1472 df-bit enable
+PING 10.116.192.66 (10.116.192.66) from 10.116.197.70 : 1472(1500) bytes of data.
+
+--- 10.116.192.66 ping statistics ---
+500 packets transmitted, 500 received, 0% packet loss, time 7402ms
+rtt min/avg/max/mdev = 11.536/16.635/56.449/5.472 ms, pipe 4, ipg/ewma 14.835/18.902 ms
+[ok][2026-10-16 11:55:18]
+admin@1074-KAIJSB-KOLHAPUR-R1-cli> ping 10.116.192.154 source 10.116.197.70 routing-instance TCL-MPLS1-MB-Transport-VR rapid enable count 500 packet-size 1472 df-bit enable
+PING 10.116.192.154 (10.116.192.154) from 10.116.197.70 : 1472(1500) bytes of data.
+
+--- 10.116.192.154 ping statistics ---
+500 packets transmitted, 500 received, 0% packet loss, time 8150ms
+rtt min/avg/max/mdev = 13.292/20.811/88.362/8.973 ms, pipe 6, ipg/ewma 16.332/19.529 ms
+[ok][2026-10-16 11:56:00]
+admin@1074-KAIJSB-KOLHAPUR-R1-cli>

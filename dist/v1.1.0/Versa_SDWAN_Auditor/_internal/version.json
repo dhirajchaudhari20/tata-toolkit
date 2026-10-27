@@ -1,0 +1,13 @@
+{
+    "latest_version": "1.1.0",
+    "release_date": "2026-10-27",
+    "min_compatible_version": "1.0.0",
+    "changelog": [
+        "Unified NOC Suite: Integrated TTBS CID Punchability Checker directly into the application",
+        "Tabbed Interface: Seamlessly switch between Versa Router Health Auditor and CID Checker",
+        "CID Multi-threading: Parallel workers (1-15x) with 2x Cross-Check verification against HelloTars",
+        "Dedicated Excel Reports: Separate high-speed exports for Router Scorecards and CID Results",
+        "Refined Clean UI: Consistent modern layout, no marketing tags, intuitive controls"
+    ],
+    "package_file": "Versa_SDWAN_Auditor.exe"
+}
