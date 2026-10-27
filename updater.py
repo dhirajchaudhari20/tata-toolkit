@@ -215,16 +215,17 @@ class UpdateDialog:
 
         self.win = tk.Toplevel(parent)
         self.win.title("🚀 Software Update Available - Tata Communications")
-        self.win.geometry("560x420")
-        self.win.resizable(False, False)
+        self.win.geometry("600x520")
+        self.win.minsize(540, 440)
+        self.win.resizable(True, True)
         self.win.transient(parent)
         self.win.grab_set()
 
         # Center on parent
         try:
             parent.update_idletasks()
-            x = parent.winfo_x() + (parent.winfo_width() - 560) // 2
-            y = parent.winfo_y() + (parent.winfo_height() - 420) // 2
+            x = parent.winfo_x() + (parent.winfo_width() - 600) // 2
+            y = parent.winfo_y() + (parent.winfo_height() - 520) // 2
             self.win.geometry(f"+{max(0, x)}+{max(0, y)}")
         except Exception:
             pass
@@ -232,9 +233,9 @@ class UpdateDialog:
         self._build_ui()
 
     def _build_ui(self):
-        # Header Frame
+        # 1. Top Header Frame (docked top)
         hdr_frame = tk.Frame(self.win, bg="#0f172a", padx=20, pady=16)
-        hdr_frame.pack(fill="x")
+        hdr_frame.pack(side="top", fill="x")
 
         tk.Label(
             hdr_frame,
@@ -248,28 +249,65 @@ class UpdateDialog:
         rel_date = self.manifest.get("release_date", "Recent")
         tk.Label(
             hdr_frame,
-            text=f"A new version of Versa SD-WAN Auditor is ready to install.",
+            text="A new version of Versa SD-WAN Auditor is ready to install.",
             font=("Segoe UI", 9),
             fg="#94a3b8",
             bg="#0f172a"
         ).pack(anchor="w", pady=(2, 0))
 
         # Source badge
-        src_label = "GitHub Cloud" if self.source_path.startswith("github://") else "Network Share"
+        src_label = "GitHub Cloud (github.com/" + GITHUB_REPO + ")" if self.source_path.startswith("github://") else "Network Share"
         tk.Label(
             hdr_frame,
             text=f"Source: {src_label}",
             font=("Segoe UI", 8),
-            fg="#64748b",
+            fg="#38bdf8",
             bg="#0f172a"
         ).pack(anchor="w", pady=(2, 0))
 
-        # Body Frame
+        # 2. Bottom Buttons Frame (docked bottom FIRST so it is NEVER clipped)
+        btn_frame = tk.Frame(self.win, bg="#f1f5f9", padx=20, pady=14)
+        btn_frame.pack(side="bottom", fill="x")
+
+        # Visual separator above buttons
+        tk.Frame(self.win, bg="#cbd5e1", height=1).pack(side="bottom", fill="x")
+
+        tk.Button(
+            btn_frame,
+            text="⚡ Update & Restart Now",
+            font=("Segoe UI", 10, "bold"),
+            bg="#16a34a",
+            fg="white",
+            activebackground="#15803d",
+            activeforeground="white",
+            relief="flat",
+            cursor="hand2",
+            padx=20,
+            pady=8,
+            command=self._on_update
+        ).pack(side="right", padx=(10, 0))
+
+        tk.Button(
+            btn_frame,
+            text="Remind Me Later",
+            font=("Segoe UI", 9),
+            bg="#64748b",
+            fg="white",
+            activebackground="#475569",
+            activeforeground="white",
+            relief="flat",
+            cursor="hand2",
+            padx=16,
+            pady=8,
+            command=self.win.destroy
+        ).pack(side="right")
+
+        # 3. Middle Body Frame (fills all remaining space)
         body = tk.Frame(self.win, bg="#f8fafc", padx=20, pady=14)
-        body.pack(fill="both", expand=True)
+        body.pack(side="top", fill="both", expand=True)
 
         # Version comparison badges
-        ver_box = tk.Frame(body, bg="#ffffff", padx=12, pady=10, highlightbackground="#e2e8f0", highlightthickness=1)
+        ver_box = tk.Frame(body, bg="#ffffff", padx=14, pady=10, highlightbackground="#e2e8f0", highlightthickness=1)
         ver_box.pack(fill="x", pady=(0, 10))
 
         tk.Label(
@@ -283,8 +321,8 @@ class UpdateDialog:
         tk.Label(
             ver_box,
             text=" ➔ ",
-            font=("Segoe UI", 10, "bold"),
-            fg="#94a3b8",
+            font=("Segoe UI", 11, "bold"),
+            fg="#0284c7",
             bg="#ffffff"
         ).pack(side="left", padx=8)
 
@@ -308,7 +346,7 @@ class UpdateDialog:
         cl_frame = ttk.Frame(body)
         cl_frame.pack(fill="both", expand=True)
 
-        cl_text = tk.Text(cl_frame, font=("Consolas", 9), bg="#ffffff", fg="#1e293b", wrap="word", height=7, padx=8, pady=6)
+        cl_text = tk.Text(cl_frame, font=("Segoe UI", 9), bg="#ffffff", fg="#1e293b", wrap="word", height=8, padx=10, pady=8)
         cl_scroll = ttk.Scrollbar(cl_frame, orient="vertical", command=cl_text.yview)
         cl_text.configure(yscrollcommand=cl_scroll.set)
         cl_text.pack(side="left", fill="both", expand=True)
@@ -323,48 +361,10 @@ class UpdateDialog:
         cl_text.insert(tk.END, changelog_str)
         cl_text.config(state="disabled")
 
-        # Buttons Frame
-        btn_frame = tk.Frame(self.win, bg="#f1f5f9", padx=18, pady=12)
-        btn_frame.pack(fill="x", side="bottom")
-
-        tk.Button(
-            btn_frame,
-            text="⚡ Update Now",
-            font=("Segoe UI", 9, "bold"),
-            bg="#16a34a",
-            fg="white",
-            activebackground="#15803d",
-            activeforeground="white",
-            relief="flat",
-            cursor="hand2",
-            padx=16,
-            pady=6,
-            command=self._on_update
-        ).pack(side="right", padx=(8, 0))
-
-        tk.Button(
-            btn_frame,
-            text="Remind Me Later",
-            font=("Segoe UI", 9),
-            bg="#94a3b8",
-            fg="white",
-            activebackground="#64748b",
-            activeforeground="white",
-            relief="flat",
-            cursor="hand2",
-            padx=14,
-            pady=6,
-            command=self.win.destroy
-        ).pack(side="right")
-
     def _on_update(self):
         self.result = True
         self.win.destroy()
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#   GITHUB DOWNLOAD PROGRESS DIALOG
-# ═══════════════════════════════════════════════════════════════════════════════
 
 class GitHubDownloadDialog:
     """
@@ -399,8 +399,9 @@ class GitHubDownloadDialog:
         threading.Thread(target=self._download_worker, daemon=True).start()
 
     def _build_ui(self):
+        # Header (top)
         hdr = tk.Frame(self.win, bg="#0f172a", padx=18, pady=12)
-        hdr.pack(fill="x")
+        hdr.pack(side="top", fill="x")
 
         tk.Label(
             hdr, text=f"⬇ Downloading v{self.new_version} from GitHub...",
@@ -412,8 +413,23 @@ class GitHubDownloadDialog:
             font=("Segoe UI", 8), fg="#64748b", bg="#0f172a"
         ).pack(anchor="w", pady=(2, 0))
 
+        # Buttons (bottom first)
+        btn_frame = tk.Frame(self.win, bg="#f1f5f9", padx=18, pady=10)
+        btn_frame.pack(side="bottom", fill="x")
+
+        tk.Frame(self.win, bg="#cbd5e1", height=1).pack(side="bottom", fill="x")
+
+        self.cancel_btn = tk.Button(
+            btn_frame, text="Cancel Download", font=("Segoe UI", 9),
+            bg="#ef4444", fg="white", activebackground="#dc2626",
+            activeforeground="white", relief="flat", cursor="hand2",
+            padx=14, pady=5, command=self._on_cancel
+        )
+        self.cancel_btn.pack(side="right")
+
+        # Body (middle)
         body = tk.Frame(self.win, bg="#f8fafc", padx=18, pady=16)
-        body.pack(fill="both", expand=True)
+        body.pack(side="top", fill="both", expand=True)
 
         self.status_label = tk.Label(
             body, text="Authenticating with GitHub...",
@@ -435,17 +451,6 @@ class GitHubDownloadDialog:
             font=("Segoe UI", 8), fg="#64748b", bg="#f8fafc", anchor="w"
         )
         self.detail_label.pack(fill="x", pady=(4, 0))
-
-        btn_frame = tk.Frame(self.win, bg="#f1f5f9", padx=18, pady=8)
-        btn_frame.pack(fill="x", side="bottom")
-
-        self.cancel_btn = tk.Button(
-            btn_frame, text="Cancel", font=("Segoe UI", 9),
-            bg="#ef4444", fg="white", activebackground="#dc2626",
-            activeforeground="white", relief="flat", cursor="hand2",
-            padx=14, pady=4, command=self._on_cancel
-        )
-        self.cancel_btn.pack(side="right")
 
     def _update_status(self, text):
         try:
@@ -642,24 +647,33 @@ def apply_github_update(manifest, parent=None):
         target_internal = os.path.join(current_dir, "_internal")
 
         bat_path = os.path.join(current_dir, "apply_update.bat")
+        v_target = manifest.get('latest_version', '?')
         lines = [
             "@echo off",
+            "title Tata Communications - Software Updater",
             "echo ==================================================",
-            "echo       Tata Communications - Applying Update...",
-            f"echo       Updating to v{manifest.get('latest_version', '?')}",
+            "echo       Tata Communications - Updating Software...",
+            f"echo       Updating to v{v_target}",
             "echo ==================================================",
-            "timeout /t 3 /nobreak >nul",
-            f'copy /y "{source_exe}" "{target_exe}"',
+            "echo Waiting for application to exit...",
+            "timeout /t 2 /nobreak >nul",
+            f'taskkill /F /IM "{exe_name}" >nul 2>&1',
+            "timeout /t 1 /nobreak >nul",
+            "echo Copying updated executable...",
+            f'copy /y "{source_exe}" "{target_exe}" >nul',
         ]
         if os.path.exists(source_internal):
-            lines.append(f'xcopy /s /e /y "{source_internal}" "{target_internal}\\"')
+            lines.append("echo Copying runtime libraries...")
+            lines.append(f'xcopy /s /e /y /q "{source_internal}" "{target_internal}\\" >nul 2>&1')
         lines.extend([
-            f'start "" "{target_exe}"',
             "echo.",
-            "echo Update completed successfully!",
-            "echo Application is restarting...",
+            "echo ==================================================",
+            "echo       Update installed successfully!",
+            "echo       Relaunching Versa SD-WAN Auditor...",
+            "echo ==================================================",
+            f'start "" "{target_exe}"',
             "timeout /t 2 /nobreak >nul",
-            'del "%~f0"',
+            'del "%~f0" >nul 2>&1',
             "exit"
         ])
 
