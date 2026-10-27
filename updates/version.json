@@ -1,11 +1,10 @@
 {
-    "latest_version": "1.3.0",
+    "latest_version": "1.2.0",
     "release_date": "2026-10-27",
     "min_compatible_version": "1.0.0",
     "changelog": [
-        "v1.3.0: Performance Update — Blazing-fast streaming updater with live progress bar, MB/s speed & ETA countdown",
+        "v1.2.0: Direct Cloud Sync — Zero-login fast updater with real-time download progress & ETA",
         "v1.2.0: Software Updater Hotfix — Docked action buttons ensuring 'Update & Restart Now' is always visible",
-        "v1.2.0: GitHub Cloud Sync — Live release distribution and background update alerts",
         "v1.1.0: Audit History & Past Records — Persistent log of all audits with one-click report openers",
         "v1.1.0: Live Scorecard Loader — Reload past Excel audit records directly into live scorecard table",
         "v1.1.0: Smart Two-Phase CID Batching — Multi-tab browser distribution + automated overflow queue",

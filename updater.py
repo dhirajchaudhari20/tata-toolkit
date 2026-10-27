@@ -25,7 +25,7 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
-CURRENT_VERSION = "1.3.0"
+CURRENT_VERSION = "1.2.0"
 CONFIG_FILE = os.path.join(os.getcwd(), "update_config.json")
 
 # ── GitHub Repository Configuration ─────────────────────────────────────────
@@ -147,19 +147,40 @@ def _github_download_file(url, dest_path, token=None):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_manifest_github():
-    """Fetches version.json from the private GitHub repo via API."""
-    import base64
+    """Fetches version.json directly from GitHub without requiring git or authentication."""
+    raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{GITHUB_VERSION_PATH}"
     token = _get_github_token()
-    if not token:
+    headers = {"User-Agent": "VersaAuditor-Updater/2.1"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    try:
+        req = urllib.request.Request(raw_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        pass
+
+    # Fallback to GitHub API (in case raw is temporarily cached/delayed)
+    try:
+        import base64
+        api_url = f"{GITHUB_API_BASE}/contents/{GITHUB_VERSION_PATH}?ref={GITHUB_BRANCH}"
+        api_headers = {
+            "User-Agent": "VersaAuditor-Updater/2.1",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        if token:
+            api_headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(api_url, headers=api_headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            content = base64.b64decode(data["content"]).decode("utf-8")
+            return json.loads(content)
+    except Exception:
         raise ConnectionError(
-            "GitHub authentication failed.\n\n"
-            "Please run 'git pull' once in a terminal to store your GitHub credentials,\n"
-            "then try again."
+            f"Unable to reach update server (github.com/{GITHUB_REPO}).\n\n"
+            f"Please verify your internet connection and try again."
         )
-    url = f"{GITHUB_API_BASE}/contents/{GITHUB_VERSION_PATH}?ref={GITHUB_BRANCH}"
-    data = _github_api_request(url, token)
-    content = base64.b64decode(data["content"]).decode("utf-8")
-    return json.loads(content)
 
 
 def fetch_remote_manifest(source_path):
@@ -520,15 +541,16 @@ class GitHubDownloadDialog:
     def _download_worker(self):
         """Background thread: streams release files directly with live byte tracking."""
         try:
-            # Step 1: Authenticate with GitHub
-            self._set_status("🔑 Authenticating with GitHub...")
+            # Step 1: Connect to update server (authentication optional)
+            self._set_status("🔄 Connecting to update server...")
             token = _get_github_token()
-            if not token:
-                self._set_status("❌ GitHub authentication failed — run 'git pull' first")
-                return
 
             if self.cancelled:
                 return
+
+            req_headers = {"User-Agent": "VersaAuditor-Updater/2.1"}
+            if token:
+                req_headers["Authorization"] = f"Bearer {token}"
 
             # Step 2: Define release assets to download
             base_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/dist/v{self.new_version}/Versa_SDWAN_Auditor"
@@ -546,7 +568,7 @@ class GitHubDownloadDialog:
             for display_name, url, dest in files_to_download:
                 if self.cancelled:
                     return
-                req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "User-Agent": "VersaAuditor"})
+                req = urllib.request.Request(url, headers=req_headers)
                 try:
                     with urllib.request.urlopen(req, timeout=10) as resp:
                         sz = int(resp.headers.get("Content-Length", 0))
@@ -576,7 +598,7 @@ class GitHubDownloadDialog:
                     return
 
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
-                req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "User-Agent": "VersaAuditor"})
+                req = urllib.request.Request(url, headers=req_headers)
 
                 with urllib.request.urlopen(req, timeout=60) as resp:
                     with open(dest, "wb") as f:
