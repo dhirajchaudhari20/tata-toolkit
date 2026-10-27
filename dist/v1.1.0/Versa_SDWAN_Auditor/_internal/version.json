@@ -1,0 +1,17 @@
+{
+    "latest_version": "1.1.0",
+    "release_date": "2026-10-27",
+    "min_compatible_version": "1.0.0",
+    "changelog": [
+        "v1.1.0: Audit History & Past Records — Persistent log of all audits with one-click report openers",
+        "v1.1.0: Live Scorecard Loader — Reload past Excel audit records directly into live scorecard table",
+        "v1.1.0: Smart Two-Phase CID Batching — Multi-tab browser distribution + automated overflow queue",
+        "v1.1.0: Anti-Lag Engine — Media & image blocking reducing RAM/CPU by 70%",
+        "v1.1.0: Concurrency Safeguards — PuTTY capped to 2 & CID capped to 5 with stability tooltips",
+        "v1.1.0: Real-Time ETA — Dynamic time remaining badge beside progress bar",
+        "v1.1.0: Windows Taskbar Identity — AppUserModelID official logo integration",
+        "v1.1.0: GitHub Auto-Updater — One-click update checking and downloading via GitHub",
+        "v1.0.0: Initial release — Versa Router Health Auditor & CID Checker base"
+    ],
+    "package_file": "Versa_SDWAN_Auditor.exe"
+}

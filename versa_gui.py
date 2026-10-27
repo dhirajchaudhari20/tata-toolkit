@@ -2856,7 +2856,7 @@ class VersaRouterAuditGUI:
     def show_changelog(self):
         """Polished Changelog dialog with rich styling and version cards."""
         win = tk.Toplevel(self.root)
-        win.title("Release Changelog — Network Operations Suite v1.0.0")
+        win.title(f"Release Changelog — Network Operations Suite v{updater.get_current_version()}")
         win.geometry("820x620")
         win.minsize(720, 500)
         win.configure(bg="#0f172a")
@@ -2874,6 +2874,20 @@ class VersaRouterAuditGUI:
         # ── Top Modern Header Bar ────────────────────────────────────────────
         hdr = tk.Frame(win, bg="#0b1329", padx=24, pady=16)
         hdr.pack(fill="x")
+
+        # Version Pill Badge (packed right first so it is never clipped)
+        ver_frame = tk.Frame(hdr, bg="#0b1329")
+        ver_frame.pack(side="right", padx=(12, 0))
+
+        pill = tk.Frame(ver_frame, bg="#0284c7", padx=12, pady=5)
+        pill.pack()
+        tk.Label(
+            pill,
+            text=f"CURRENT: v{updater.get_current_version()}",
+            font=("Segoe UI", 9, "bold"),
+            bg="#0284c7",
+            fg="white"
+        ).pack()
 
         left_hdr = tk.Frame(hdr, bg="#0b1329")
         left_hdr.pack(side="left", fill="x", expand=True)
@@ -2904,20 +2918,6 @@ class VersaRouterAuditGUI:
             fg="#64748b",
             bg="#0b1329"
         ).pack(anchor="w", pady=(3, 0))
-
-        # Version Pill Badge
-        ver_frame = tk.Frame(hdr, bg="#0b1329")
-        ver_frame.pack(side="right")
-
-        pill = tk.Frame(ver_frame, bg="#0284c7", padx=12, pady=5)
-        pill.pack()
-        tk.Label(
-            pill,
-            text="CURRENT: v1.0.0",
-            font=("Segoe UI", 9, "bold"),
-            bg="#0284c7",
-            fg="white"
-        ).pack()
 
         # Accent border divider
         tk.Frame(win, bg="#1e293b", height=1).pack(fill="x")
@@ -3066,8 +3066,8 @@ class VersaRouterAuditGUI:
                         anchor="w"
                     ).pack(side="left", fill="x", expand=True)
 
-        # ── v1.4.0 ───────────────────────────────────────────────────────────
-        version_card(inner, "1.4.0", "2026-10-27", [
+        # ── v1.1.0 ───────────────────────────────────────────────────────────
+        version_card(inner, "1.1.0", "2026-10-27", [
             ("🕒  Audit History & Past Execution Records", [
                 "New dedicated Tab 3: 'Audit History & Past Records' preserves all past runs persistently.",
                 "Auto-Discovery: Automatically scans and indexes all historical Excel scorecards, text logs, and PDF reports on disk.",
@@ -3078,71 +3078,27 @@ class VersaRouterAuditGUI:
             ("⚡  Optimized Concurrency & Anti-Lag Engine", [
                 "PuTTY parallel workers capped to max 2 with stability info guide.",
                 "CID workers capped to max 5 with anti-lag image/media blocking, reducing RAM & CPU by 70%.",
-                "Two-phase smart CID distribution with automated remainder overflow queue."
+                "Two-phase smart CID distribution with automated remainder overflow queue.",
+                "Zero Idle Time: Fastest browser automatically processes leftover CIDs without re-launching."
             ]),
-        ])
-
-        # ── v1.3.0 ───────────────────────────────────────────────────────────
-        version_card(inner, "1.3.0", "2026-10-27", [
-            ("🧠  Smart Two-Phase CID Distribution & Remainder Handling", [
-                "Phase 1 (Equal Batches): CIDs are divided evenly across parallel browser sessions (e.g. 21 CIDs / 2 workers = 10 each).",
-                "Phase 2 (Dynamic Overflow Queue): Leftover remainder CIDs (e.g. the 21st CID) go into an automated overflow queue.",
-                "Zero Idle Time: Whichever browser finishes Phase 1 first immediately and automatically grabs the remainder CIDs without re-launching browsers or creating extra threads.",
-                "Live Batch Tracking: Console clearly logs Phase-1 assignments and announces which browser picks up overflow CIDs."
-            ]),
-            ("⏱️  Real-Time ETA & Time Remaining Display", [
-                "Dynamic time left indicator displayed right beside the progress bar in both CID and Router tabs.",
-                "Calculates remaining execution duration based on live average processing speed.",
-                "Displays exact total completion time when the automation run finishes."
+            ("⏱️  Real-Time ETA & Progress Display", [
+                "Dynamic time remaining badge displayed right beside the progress bar in both CID and Router tabs.",
+                "Calculates remaining execution duration based on live average processing speed."
             ]),
             ("🏷️  Native Windows Taskbar Identity", [
-                "Registered custom Windows AppUserModelID to ensure the taskbar, titlebar, and Alt-Tab display the official application logo instead of the default Tk feather icon."
+                "Registered custom Windows AppUserModelID so the taskbar and titlebar display the official logo instead of Tk default icon."
             ]),
-            ("🎨  Enterprise Changelog Interface", [
-                "Complete UI redesign with modern dark NOC theme, color-coded version status pills, and structured section cards.",
-                "Responsive canvas with smooth mouse-wheel scrolling and clean typography."
-            ]),
-        ])
-
-        # ── v1.2.0 ───────────────────────────────────────────────────────────
-        version_card(inner, "1.2.0", "2026-10-27", [
-            ("🔧  Parallel PuTTY Automation Fix (Router Health Auditor)", [
-                "Direct WM_CHAR injection into window HWND — eliminates global clipboard (pyperclip) collisions across multiple PuTTY sessions.",
-                "Per-instance lock prevents parallel threads from blocking each other on different terminal windows.",
-                "Balanced distribution: 40 routers across 2 PuTTY sessions process 20 each simultaneously into a single combined Excel scorecard."
-            ]),
-            ("📄  CID Direct PDF Report Export", [
-                "Automated PDF report generation saved directly into the CID_Reports/ folder without prompt dialogs.",
-                "Automatic dual-export: both Excel and PDF reports are generated upon automation completion.",
-                "Color-coded status styling: Green for Punchable, Orange for Non-Punchable, Red for Errors."
-            ]),
-            ("🔀  Dedicated Browser Isolation", [
-                "Each CID worker runs its own isolated browser process to eliminate session cross-talk and server throttling."
-            ])
-        ])
-
-        # ── v1.1.0 ───────────────────────────────────────────────────────────
-        version_card(inner, "1.1.0", "2026-10-27", [
-            ("🔗  Unified Network Operations Suite", [
-                "Merged TTBS CID Punchability Checker and Versa Router Health Auditor into a unified tabbed application.",
-                "Seamless tab switching between router diagnostics and CID verification."
-            ]),
-            ("⚡  Multi-Worker CID Engine", [
-                "Configurable parallel browser workers (1–15×) with 2× Cross-Check verification mode.",
-                "Resilient browser fallback supporting local Playwright, Microsoft Edge, and Chrome."
-            ]),
-            ("📊  Dedicated Excel Generation", [
-                "Dedicated automated report engines with SLA pass/fail calculations."
+            ("🐙  GitHub Auto-Updater Integration", [
+                "Check for updates directly against GitHub private repository with one-click in-app downloads.",
+                "Background silent startup checks and progress dialog for update downloads."
             ])
         ])
 
         # ── v1.0.0 ───────────────────────────────────────────────────────────
         version_card(inner, "1.0.0", "2026-10-26", [
             ("🚀  Initial Release", [
-                "Automated Versa SD-WAN router-to-router SLA diagnostics and 500-count rapid ping audits.",
-                "Supports ARCON PAM Terminal (PuTTY), Bastion Jump Host, and Direct SSH connections.",
-                "Automated extraction of BGP neighbor uptime, VRRP priorities, WAN interfaces, and NAT status.",
-                "Per-router diagnostic screenshot capture."
+                "Unified Network Operations Suite combining Versa Router Health Auditor and TTBS CID Punchability Checker.",
+                "Multi-router batch diagnostics, 500-count SLA ping audits, and automated Excel/PDF report generation."
             ])
         ])
 
