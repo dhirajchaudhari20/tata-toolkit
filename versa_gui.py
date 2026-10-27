@@ -3066,6 +3066,14 @@ class VersaRouterAuditGUI:
                         anchor="w"
                     ).pack(side="left", fill="x", expand=True)
 
+        # ── v1.2.0 ───────────────────────────────────────────────────────────
+        version_card(inner, "1.2.0", "2026-10-27", [
+            ("🚀  Software Updater Hotfix", [
+                "Docked action buttons: 'Update & Restart Now' is locked to the bottom of the dialog and always clearly visible.",
+                "Automated binary replacement and seamless restart sequence via GitHub API integration."
+            ])
+        ])
+
         # ── v1.1.0 ───────────────────────────────────────────────────────────
         version_card(inner, "1.1.0", "2026-10-27", [
             ("🕒  Audit History & Past Execution Records", [
