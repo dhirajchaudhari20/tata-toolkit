@@ -368,8 +368,9 @@ class UpdateDialog:
 
 class GitHubDownloadDialog:
     """
-    Progress dialog that downloads the new release from the GitHub private repo.
-    Downloads the EXE and all _internal/ files into a temp staging folder.
+    Modern streaming download dialog with live progress bar, percentage,
+    download speed (MB/s), and real-time ETA countdown.
+    Directly streams release assets from GitHub without slow recursive folder scans.
     """
     def __init__(self, parent, manifest):
         self.parent = parent
@@ -381,16 +382,17 @@ class GitHubDownloadDialog:
 
         self.win = tk.Toplevel(parent)
         self.win.title("⬇ Downloading Update — Tata Communications")
-        self.win.geometry("520x260")
-        self.win.resizable(False, False)
+        self.win.geometry("580x320")
+        self.win.minsize(500, 280)
+        self.win.resizable(True, True)
         self.win.transient(parent)
         self.win.grab_set()
         self.win.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
         try:
             parent.update_idletasks()
-            x = parent.winfo_x() + (parent.winfo_width() - 520) // 2
-            y = parent.winfo_y() + (parent.winfo_height() - 260) // 2
+            x = parent.winfo_x() + (parent.winfo_width() - 580) // 2
+            y = parent.winfo_y() + (parent.winfo_height() - 320) // 2
             self.win.geometry(f"+{max(0, x)}+{max(0, y)}")
         except Exception:
             pass
@@ -399,22 +401,22 @@ class GitHubDownloadDialog:
         threading.Thread(target=self._download_worker, daemon=True).start()
 
     def _build_ui(self):
-        # Header (top)
-        hdr = tk.Frame(self.win, bg="#0f172a", padx=18, pady=12)
+        # 1. Top Header
+        hdr = tk.Frame(self.win, bg="#0f172a", padx=20, pady=14)
         hdr.pack(side="top", fill="x")
 
         tk.Label(
-            hdr, text=f"⬇ Downloading v{self.new_version} from GitHub...",
-            font=("Segoe UI", 11, "bold"), fg="#38bdf8", bg="#0f172a"
+            hdr, text=f"⬇ Downloading Update v{self.new_version}",
+            font=("Segoe UI", 12, "bold"), fg="#38bdf8", bg="#0f172a"
         ).pack(anchor="w")
 
         tk.Label(
-            hdr, text=f"Source: github.com/{GITHUB_REPO}",
-            font=("Segoe UI", 8), fg="#64748b", bg="#0f172a"
+            hdr, text=f"Source: github.com/{GITHUB_REPO} (Cloud Release Channel)",
+            font=("Segoe UI", 8), fg="#94a3b8", bg="#0f172a"
         ).pack(anchor="w", pady=(2, 0))
 
-        # Buttons (bottom first)
-        btn_frame = tk.Frame(self.win, bg="#f1f5f9", padx=18, pady=10)
+        # 2. Bottom Button Bar (packed first to guarantee visibility)
+        btn_frame = tk.Frame(self.win, bg="#f1f5f9", padx=20, pady=12)
         btn_frame.pack(side="bottom", fill="x")
 
         tk.Frame(self.win, bg="#cbd5e1", height=1).pack(side="bottom", fill="x")
@@ -423,56 +425,88 @@ class GitHubDownloadDialog:
             btn_frame, text="Cancel Download", font=("Segoe UI", 9),
             bg="#ef4444", fg="white", activebackground="#dc2626",
             activeforeground="white", relief="flat", cursor="hand2",
-            padx=14, pady=5, command=self._on_cancel
+            padx=16, pady=6, command=self._on_cancel
         )
         self.cancel_btn.pack(side="right")
 
-        # Body (middle)
-        body = tk.Frame(self.win, bg="#f8fafc", padx=18, pady=16)
+        # 3. Middle Body
+        body = tk.Frame(self.win, bg="#f8fafc", padx=20, pady=18)
         body.pack(side="top", fill="both", expand=True)
 
+        # Status text + percentage row
+        status_row = tk.Frame(body, bg="#f8fafc")
+        status_row.pack(fill="x", pady=(0, 6))
+
         self.status_label = tk.Label(
-            body, text="Authenticating with GitHub...",
-            font=("Segoe UI", 9), fg="#334155", bg="#f8fafc", anchor="w"
+            status_row, text="Connecting to GitHub release server...",
+            font=("Segoe UI", 9, "bold"), fg="#0f172a", bg="#f8fafc", anchor="w"
         )
-        self.status_label.pack(fill="x", pady=(0, 8))
+        self.status_label.pack(side="left", fill="x", expand=True)
 
-        self.progress = ttk.Progressbar(body, orient="horizontal", mode="determinate", length=460)
-        self.progress.pack(fill="x", pady=(0, 8))
+        self.pct_label = tk.Label(
+            status_row, text="0%",
+            font=("Segoe UI", 11, "bold"), fg="#0284c7", bg="#f8fafc"
+        )
+        self.pct_label.pack(side="right")
 
+        # Progress bar
+        self.progress = ttk.Progressbar(body, orient="horizontal", mode="determinate", length=520, maximum=100)
+        self.progress.pack(fill="x", pady=(0, 10))
+
+        # Metrics box: Downloaded Size / Speed / ETA
+        stats_frame = tk.Frame(body, bg="#ffffff", padx=12, pady=8, highlightbackground="#e2e8f0", highlightthickness=1)
+        stats_frame.pack(fill="x", pady=(0, 8))
+
+        self.size_label = tk.Label(
+            stats_frame, text="Downloaded: 0.0 MB / -- MB",
+            font=("Segoe UI", 8), fg="#475569", bg="#ffffff"
+        )
+        self.size_label.pack(side="left")
+
+        self.eta_label = tk.Label(
+            stats_frame, text="Speed: -- MB/s  •  ETA: calculating...",
+            font=("Segoe UI", 8, "bold"), fg="#0f766e", bg="#ffffff"
+        )
+        self.eta_label.pack(side="right")
+
+        # Active file label
         self.file_label = tk.Label(
             body, text="",
-            font=("Consolas", 8), fg="#94a3b8", bg="#f8fafc", anchor="w"
+            font=("Consolas", 8), fg="#64748b", bg="#f8fafc", anchor="w"
         )
         self.file_label.pack(fill="x")
 
-        self.detail_label = tk.Label(
-            body, text="",
-            font=("Segoe UI", 8), fg="#64748b", bg="#f8fafc", anchor="w"
-        )
-        self.detail_label.pack(fill="x", pady=(4, 0))
-
-    def _update_status(self, text):
+    def _set_status(self, text):
         try:
             self.win.after(0, lambda: self.status_label.config(text=text))
         except Exception:
             pass
 
-    def _update_file(self, text):
+    def _update_progress(self, pct, downloaded_bytes, total_bytes, speed_bps, eta_sec, current_file=""):
         try:
-            self.win.after(0, lambda: self.file_label.config(text=text))
-        except Exception:
-            pass
+            dl_mb = downloaded_bytes / (1024 * 1024)
+            tot_mb = total_bytes / (1024 * 1024) if total_bytes > 0 else 0
+            speed_mb = speed_bps / (1024 * 1024)
 
-    def _update_detail(self, text):
-        try:
-            self.win.after(0, lambda: self.detail_label.config(text=text))
-        except Exception:
-            pass
+            # Clean ETA formatting
+            if eta_sec is not None and eta_sec >= 0:
+                if eta_sec < 60:
+                    eta_str = f"ETA: {int(eta_sec)}s left"
+                else:
+                    m = int(eta_sec // 60)
+                    s = int(eta_sec % 60)
+                    eta_str = f"ETA: {m}m {s}s left"
+            else:
+                eta_str = "ETA: calculating..."
 
-    def _update_progress(self, value, maximum=100):
-        try:
-            self.win.after(0, lambda: self.progress.config(value=value, maximum=maximum))
+            def _apply():
+                self.progress["value"] = pct
+                self.pct_label.config(text=f"{int(pct)}%")
+                self.size_label.config(text=f"Downloaded: {dl_mb:.1f} MB / {tot_mb:.1f} MB")
+                self.eta_label.config(text=f"Speed: {speed_mb:.1f} MB/s  •  {eta_str}")
+                if current_file:
+                    self.file_label.config(text=current_file)
+            self.win.after(0, _apply)
         except Exception:
             pass
 
@@ -483,121 +517,90 @@ class GitHubDownloadDialog:
         except Exception:
             pass
 
-    def _collect_github_files(self, api_url, token, prefix=""):
-        """Recursively collects all files in a GitHub directory, returns list of (relative_path, download_url, size)."""
-        files = []
-        data = _github_api_request(api_url, token)
-        for item in data:
-            rel_path = os.path.join(prefix, item["name"]) if prefix else item["name"]
-            if item["type"] == "file":
-                # For private repos, download_url requires auth, so use the API url instead
-                files.append((rel_path, item["url"], item.get("size", 0)))
-            elif item["type"] == "dir":
-                sub_url = item["url"]
-                files.extend(self._collect_github_files(sub_url, token, rel_path))
-        return files
-
-    def _download_single_file(self, api_url, dest_path, token):
-        """Downloads a single file from GitHub Contents API (handles base64 and redirect)."""
-        import base64
-        headers = {
-            "User-Agent": "VersaAuditor-Updater/2.1",
-            "Accept": "application/vnd.github.v3+json"
-        }
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-
-        req = urllib.request.Request(api_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-
-        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-
-        # If file is small enough, GitHub returns base64-encoded content
-        if "content" in data and data.get("encoding") == "base64":
-            with open(dest_path, "wb") as f:
-                f.write(base64.b64decode(data["content"]))
-        elif "download_url" in data and data["download_url"]:
-            # For larger files or private repos, download via the download_url with auth
-            dl_headers = {"User-Agent": "VersaAuditor-Updater/2.1"}
-            if token:
-                dl_headers["Authorization"] = f"Bearer {token}"
-            dl_req = urllib.request.Request(data["download_url"], headers=dl_headers)
-            with urllib.request.urlopen(dl_req, timeout=120) as dl_resp:
-                with open(dest_path, "wb") as f:
-                    while True:
-                        chunk = dl_resp.read(1024 * 256)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-
     def _download_worker(self):
-        """Background thread: authenticates, lists files, downloads them all."""
+        """Background thread: streams release files directly with live byte tracking."""
         try:
-            # Step 1: Authenticate
-            self._update_status("🔑 Authenticating with GitHub...")
+            # Step 1: Authenticate with GitHub
+            self._set_status("🔑 Authenticating with GitHub...")
             token = _get_github_token()
             if not token:
-                self._update_status("❌ GitHub authentication failed — run 'git pull' first")
+                self._set_status("❌ GitHub authentication failed — run 'git pull' first")
                 return
 
             if self.cancelled:
                 return
 
-            # Step 2: List all files in dist/v{version}/Versa_SDWAN_Auditor/
-            self._update_status(f"📂 Scanning release files for v{self.new_version}...")
-            dist_path = f"{GITHUB_DIST_PREFIX}/v{self.new_version}/Versa_SDWAN_Auditor"
-            api_url = f"{GITHUB_API_BASE}/contents/{dist_path}?ref={GITHUB_BRANCH}"
+            # Step 2: Define release assets to download
+            base_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/dist/v{self.new_version}/Versa_SDWAN_Auditor"
+            files_to_download = [
+                ("Versa_SDWAN_Auditor.exe", f"{base_raw}/Versa_SDWAN_Auditor.exe", os.path.join(self.staging_dir, GITHUB_EXE_NAME)),
+                ("_internal/base_library.zip", f"{base_raw}/_internal/base_library.zip", os.path.join(self.staging_dir, "_internal", "base_library.zip")),
+                ("_internal/version.json", f"{base_raw}/_internal/version.json", os.path.join(self.staging_dir, "_internal", "version.json")),
+            ]
 
-            try:
-                all_files = self._collect_github_files(api_url, token)
-            except urllib.error.HTTPError as e:
-                if e.code == 404:
-                    self._update_status(f"❌ Release v{self.new_version} not found on GitHub")
-                else:
-                    self._update_status(f"❌ GitHub API error: {e}")
+            # Step 3: Fetch file sizes via HEAD requests
+            self._set_status(f"📡 Fetching release metadata for v{self.new_version}...")
+            total_bytes = 0
+            resolved_files = []
+
+            for display_name, url, dest in files_to_download:
+                if self.cancelled:
+                    return
+                req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "User-Agent": "VersaAuditor"})
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        sz = int(resp.headers.get("Content-Length", 0))
+                        total_bytes += sz
+                        resolved_files.append((display_name, url, dest, sz))
+                except Exception:
+                    pass
+
+            if not resolved_files:
+                self._set_status(f"❌ Could not locate release v{self.new_version} on GitHub")
                 return
 
-            if not all_files:
-                self._update_status("❌ No release files found on GitHub")
-                return
+            tot_mb = total_bytes / (1024 * 1024)
+            self._set_status(f"⬇ Downloading v{self.new_version} ({tot_mb:.1f} MB)...")
 
-            if self.cancelled:
-                return
-
-            total_files = len(all_files)
-            total_bytes = sum(f[2] for f in all_files)
-            total_mb = total_bytes / (1024 * 1024)
-            self._update_status(f"⬇ Downloading {total_files} files ({total_mb:.1f} MB)...")
-            self._update_detail(f"Staging folder: {self.staging_dir}")
-
-            # Step 3: Clean staging dir
+            # Clean staging folder
             if os.path.exists(self.staging_dir):
                 shutil.rmtree(self.staging_dir, ignore_errors=True)
             os.makedirs(self.staging_dir, exist_ok=True)
 
-            # Step 4: Download each file
+            # Step 4: Stream download each file with real-time stats
             downloaded_bytes = 0
-            for idx, (rel_path, file_api_url, file_size) in enumerate(all_files, 1):
+            t_start = time.time()
+
+            for display_name, url, dest, file_sz in resolved_files:
                 if self.cancelled:
                     return
 
-                short_name = rel_path.replace("\\", "/")
-                self._update_file(f"[{idx}/{total_files}]  {short_name}")
-                self._update_progress(idx - 1, total_files)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}", "User-Agent": "VersaAuditor"})
 
-                dest = os.path.join(self.staging_dir, rel_path)
-                self._download_single_file(file_api_url, dest, token)
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    with open(dest, "wb") as f:
+                        while True:
+                            if self.cancelled:
+                                return
+                            chunk = resp.read(128 * 1024)  # 128KB chunks for smooth progress updates
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            downloaded_bytes += len(chunk)
 
-                downloaded_bytes += file_size
-                dl_mb = downloaded_bytes / (1024 * 1024)
-                self._update_detail(f"Downloaded: {dl_mb:.1f} / {total_mb:.1f} MB")
+                            elapsed = time.time() - t_start
+                            speed = downloaded_bytes / elapsed if elapsed > 0 else 0
+                            remaining_bytes = max(0, total_bytes - downloaded_bytes)
+                            eta = remaining_bytes / speed if speed > 0 else 0
+                            pct = min(100.0, (downloaded_bytes / total_bytes) * 100) if total_bytes > 0 else 0
 
-            self._update_progress(total_files, total_files)
-            self._update_status(f"✅ Download complete — {total_files} files ready to install")
-            self._update_file("")
+                            self._update_progress(pct, downloaded_bytes, total_bytes, speed, eta, f"[{display_name}]")
 
-            # Verify EXE was downloaded
+            # Download finished
+            self._update_progress(100.0, total_bytes, total_bytes, 0, 0, "All files downloaded successfully")
+            self._set_status("✅ Download complete! Preparing installation...")
+
             exe_path = os.path.join(self.staging_dir, GITHUB_EXE_NAME)
             if os.path.exists(exe_path):
                 self.success = True
@@ -607,15 +610,11 @@ class GitHubDownloadDialog:
                 except Exception:
                     pass
             else:
-                self._update_status("❌ EXE not found in downloaded files")
+                self._set_status("❌ Error: Downloaded executable not found")
 
         except Exception as e:
-            self._update_status(f"❌ Download failed: {e}")
+            self._set_status(f"❌ Download failed: {e}")
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#   APPLY UPDATE — handles both GitHub and Offline sources
-# ═══════════════════════════════════════════════════════════════════════════════
 
 def apply_github_update(manifest, parent=None):
     """
