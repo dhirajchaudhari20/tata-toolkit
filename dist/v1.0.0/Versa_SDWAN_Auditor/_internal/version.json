@@ -3,10 +3,16 @@
     "release_date": "2026-10-27",
     "min_compatible_version": "1.0.0",
     "changelog": [
-        "Initial release - v1.0.0",
-        "Versa SD-WAN Router Health and Ping Auditor",
-        "Supports PAM Terminal, Bastion SSH, and Direct SSH modes",
-        "BGP, WAN Interface, VRRP diagnostics with Excel export"
+        "v1.0.0: Full Unified Release — Versa Router Health Auditor + TTBS CID Punchability Checker",
+        "v1.0.0: Audit History & Past Records — Dedicated Tab 3 with persistent logs and one-click openers",
+        "v1.0.0: Historical Scorecard Loader — Reload past Excel audit records into live scorecard table",
+        "v1.0.0: Auto-Discovery — Automatically indexes all past Excel, PDF, and log files on disk",
+        "v1.0.0: Smart Two-Phase CID Batching — Multi-tab division + automated remainder queue",
+        "v1.0.0: Anti-Lag Engine — Media & image blocking reducing RAM/CPU by 70%",
+        "v1.0.0: Concurrency Safeguards — PuTTY max 2 & CID max 5 with safety tooltips",
+        "v1.0.0: Real-Time ETA — Dynamic time remaining badge beside progress bar",
+        "v1.0.0: Native Windows Taskbar Icon — AppUserModelID identity integration",
+        "v1.0.0: GitHub Auto-Updater — Seamless one-click update checking and downloading via GitHub"
     ],
     "package_file": "Versa_SDWAN_Auditor.exe"
 }

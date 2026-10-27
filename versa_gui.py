@@ -2856,7 +2856,7 @@ class VersaRouterAuditGUI:
     def show_changelog(self):
         """Polished Changelog dialog with rich styling and version cards."""
         win = tk.Toplevel(self.root)
-        win.title("Release Changelog — Network Operations Suite v1.3.0")
+        win.title("Release Changelog — Network Operations Suite v1.0.0")
         win.geometry("820x620")
         win.minsize(720, 500)
         win.configure(bg="#0f172a")
@@ -2913,7 +2913,7 @@ class VersaRouterAuditGUI:
         pill.pack()
         tk.Label(
             pill,
-            text="CURRENT: v1.4.0",
+            text="CURRENT: v1.0.0",
             font=("Segoe UI", 9, "bold"),
             bg="#0284c7",
             fg="white"
