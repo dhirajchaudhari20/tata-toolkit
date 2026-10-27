@@ -624,7 +624,7 @@ class GitHubDownloadDialog:
             self._set_status("✅ Download complete! Preparing installation...")
 
             exe_path = os.path.join(self.staging_dir, GITHUB_EXE_NAME)
-            if os.path.exists(exe_path):
+            if os.path.exists(exe_path) and os.path.getsize(exe_path) >= 10 * 1024 * 1024:
                 self.success = True
                 time.sleep(1)
                 try:
@@ -669,37 +669,62 @@ def apply_github_update(manifest, parent=None):
 
         bat_path = os.path.join(current_dir, "apply_update.bat")
         v_target = manifest.get('latest_version', '?')
-        lines = [
-            "@echo off",
-            "title Tata Communications - Software Updater",
-            "echo ==================================================",
-            "echo       Tata Communications - Updating Software...",
-            f"echo       Updating to v{v_target}",
-            "echo ==================================================",
-            "echo Waiting for application to exit...",
-            "timeout /t 2 /nobreak >nul",
-            f'taskkill /F /IM "{exe_name}" >nul 2>&1',
-            "timeout /t 1 /nobreak >nul",
-            "echo Copying updated executable...",
-            f'copy /y "{source_exe}" "{target_exe}" >nul',
-        ]
-        if os.path.exists(source_internal):
-            lines.append("echo Copying runtime libraries...")
-            lines.append(f'xcopy /s /e /y /q "{source_internal}" "{target_internal}\\" >nul 2>&1')
-        lines.extend([
-            "echo.",
-            "echo ==================================================",
-            "echo       Update installed successfully!",
-            "echo       Relaunching Versa SD-WAN Auditor...",
-            "echo ==================================================",
-            f'start "" "{target_exe}"',
-            "timeout /t 2 /nobreak >nul",
-            'del "%~f0" >nul 2>&1',
-            "exit"
-        ])
+        bat_content = f"""@echo off
+setlocal enabledelayedexpansion
+title Tata Communications - Software Updater
+echo ==================================================
+echo       Tata Communications - Updating Software...
+echo       Installing v{v_target}
+echo ==================================================
+echo.
 
+echo [1/4] Waiting for application to close...
+set RETRY=0
+:WAIT_LOOP
+timeout /t 1 /nobreak >nul
+taskkill /F /IM "{exe_name}" >nul 2>&1
+timeout /t 1 /nobreak >nul
+tasklist /FI "IMAGENAME eq {exe_name}" 2>nul | find /I "{exe_name}" >nul
+if not errorlevel 1 (
+    set /a RETRY+=1
+    if !RETRY! leq 10 goto WAIT_LOOP
+)
+
+echo [2/4] Backing up current executable...
+if exist "{target_exe}.old" del /f /q "{target_exe}.old" >nul 2>&1
+move /y "{target_exe}" "{target_exe}.old" >nul 2>&1
+
+echo [3/4] Installing updated executable...
+copy /y "{source_exe}" "{target_exe}" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo ERROR: Could not copy new version. Restoring backup...
+    move /y "{target_exe}.old" "{target_exe}" >nul 2>&1
+    pause
+    exit /b 1
+)
+
+if exist "{source_internal}" (
+    echo Installing updated libraries...
+    xcopy /s /e /y /q "{source_internal}\\*" "{target_internal}\\" >nul 2>&1
+)
+
+echo [4/4] Cleaning up...
+del /f /q "{target_exe}.old" >nul 2>&1
+
+echo.
+echo ==================================================
+echo       Update installed successfully!
+echo       Relaunching Versa SD-WAN Auditor...
+echo ==================================================
+echo.
+start "" "{target_exe}"
+timeout /t 2 /nobreak >nul
+del "%~f0" >nul 2>&1
+exit
+"""
         with open(bat_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines) + "\n")
+            f.write(bat_content)
 
         messagebox.showinfo(
             "Ready to Update",
