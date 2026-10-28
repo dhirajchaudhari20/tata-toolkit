@@ -147,21 +147,15 @@ def _github_download_file(url, dest_path, token=None):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_manifest_github():
-    """Fetches version.json directly from GitHub without requiring git or authentication."""
-    raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{GITHUB_VERSION_PATH}"
+    """Fetches version.json from GitHub.
+
+    Priority 1: GitHub Contents API (real-time, zero CDN cache).
+      Always reflects the latest push immediately - no delay.
+    Priority 2: Raw CDN fallback (may cache for up to 5 min after push).
+    """
     token = _get_github_token()
-    headers = {"User-Agent": "VersaAuditor-Updater/2.1"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
 
-    try:
-        req = urllib.request.Request(raw_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except Exception:
-        pass
-
-    # Fallback to GitHub API (in case raw is temporarily cached/delayed)
+    # ── Priority 1: GitHub Contents API — real-time, no cache ───────────────
     try:
         import base64
         api_url = f"{GITHUB_API_BASE}/contents/{GITHUB_VERSION_PATH}?ref={GITHUB_BRANCH}"
@@ -174,8 +168,20 @@ def _fetch_manifest_github():
         req = urllib.request.Request(api_url, headers=api_headers)
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            content = base64.b64decode(data["content"]).decode("utf-8")
-            return json.loads(content)
+            file_content = base64.b64decode(data["content"]).decode("utf-8")
+            return json.loads(file_content)
+    except Exception:
+        pass
+
+    # ── Priority 2: Raw CDN fallback (up to 5-min cache after push) ─────────
+    try:
+        raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/{GITHUB_VERSION_PATH}"
+        headers = {"User-Agent": "VersaAuditor-Updater/2.1"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(raw_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
     except Exception:
         raise ConnectionError(
             f"Unable to reach update server (github.com/{GITHUB_REPO}).\n\n"
@@ -562,6 +568,7 @@ class GitHubDownloadDialog:
             pkg_dest = os.path.join(self.staging_dir, "update.pkg")
             use_pkg = False
             pkg_size = 0
+            total_bytes = 0
 
             self._set_status(f"📡 Checking release package for v{self.new_version}...")
             try:
@@ -576,6 +583,7 @@ class GitHubDownloadDialog:
 
             if use_pkg:
                 # ── Path A: Containerized package download (.pkg — zero .exe restriction) ──
+                total_bytes = pkg_size
                 tot_mb = pkg_size / (1024 * 1024)
                 self._set_status(f"⬇ Downloading v{self.new_version} update package ({tot_mb:.1f} MB)...")
 
