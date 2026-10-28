@@ -3066,21 +3066,21 @@ class VersaRouterAuditGUI:
                         anchor="w"
                     ).pack(side="left", fill="x", expand=True)
 
-        # ── v1.5.0 ───────────────────────────────────────────────────────────
-        version_card(inner, "1.5.0", "2026-10-28", [
-            ("⚡  Live Update Test", [
-                "Full verification of containerized .pkg update on corporate network.",
-                "High-speed streaming download with real-time transfer rate (MB/s) and ETA.",
-                "Atomic replacement and zero-downtime application restart."
+        # ── v1.0.2 ───────────────────────────────────────────────────────────
+        version_card(inner, "1.0.2", "2026-10-28", [
+            ("⚡  Live Cloud Update Test", [
+                "Verification of containerized .pkg update delivery across corporate network.",
+                "Real-time GitHub Contents API synchronization with zero cache delay.",
+                "Direct streaming package download with 90s corporate proxy timeout.",
+                "Atomic binary replacement and zero-downtime application restart."
             ])
         ])
 
-        # ── v1.4.0 ───────────────────────────────────────────────────────────
-        version_card(inner, "1.4.0", "2026-10-28", [
-            ("🛡️  Corporate Firewall Bypass & Containerized Updates", [
-                "Packaged update container (.pkg) eliminates corporate proxy / Zscaler .exe download blocking.",
-                "Atomic update installation with automatic backup, rollback protection, and process exit wait.",
-                "Real-time download stats with live progress bar, MB/s transfer speed, and ETA countdown."
+        # ── v1.0.1 ───────────────────────────────────────────────────────────
+        version_card(inner, "1.0.1", "2026-10-28", [
+            ("🛡️  Corporate Firewall Bypass", [
+                "Packaged update container (.pkg) eliminating corporate proxy / Zscaler .exe download blocking.",
+                "Atomic update installation with automatic backup, rollback protection, and process exit wait."
             ])
         ])
 
