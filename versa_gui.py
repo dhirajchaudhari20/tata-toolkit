@@ -552,18 +552,18 @@ class VersaRouterAuditGUI:
         self.ping_count_var = tk.IntVar(value=500)
         ttk.Spinbox(top_frame, from_=50, to=1000, increment=50, textvariable=self.ping_count_var, width=6).grid(row=3, column=5, padx=4, pady=(6, 0), sticky="w")
 
-        # Multi-terminal parallel workers selector (capped at max 2 for guaranteed stability)
+        # Multi-terminal parallel workers selector (supports up to max 5 workers)
         putty_worker_frame = tk.Frame(top_frame)
         putty_worker_frame.grid(row=3, column=6, columnspan=3, padx=(10, 2), pady=(6, 0), sticky="w")
 
         ttk.Label(putty_worker_frame, text="⚡ Parallel Workers (PuTTY):", font=("Segoe UI", 9, "bold")).pack(side="left")
-        self.worker_count_var = tk.IntVar(value=1)
+        self.worker_count_var = tk.IntVar(value=2)
 
         def _validate_putty_workers(*args):
             try:
                 v = self.worker_count_var.get()
-                if v > 2:
-                    self.worker_count_var.set(2)
+                if v > 5:
+                    self.worker_count_var.set(5)
                 elif v < 1:
                     self.worker_count_var.set(1)
             except Exception:
@@ -573,7 +573,7 @@ class VersaRouterAuditGUI:
         self.worker_spinbox = ttk.Spinbox(
             putty_worker_frame,
             from_=1,
-            to=2,
+            to=5,
             increment=1,
             textvariable=self.worker_count_var,
             width=3
@@ -582,7 +582,7 @@ class VersaRouterAuditGUI:
 
         putty_info_btn = tk.Button(
             putty_worker_frame,
-            text="ℹ️ Max 2 (Stable)",
+            text="ℹ️ Max 5 (Multi-CLI)",
             font=("Segoe UI", 8, "bold"),
             bg="#e0f2fe",
             fg="#0369a1",
@@ -595,6 +595,47 @@ class VersaRouterAuditGUI:
             command=self._show_putty_worker_info
         )
         putty_info_btn.pack(side="left", padx=(2, 0))
+        # Row 4: Audit Profile — Selective Command Execution
+        profile_frame = tk.Frame(top_frame)
+        profile_frame.grid(row=4, column=0, columnspan=9, padx=4, pady=(8, 2), sticky="w")
+
+        ttk.Label(profile_frame, text="🎯 Audit Commands:", font=("Segoe UI", 9, "bold")).pack(side="left", padx=(0, 8))
+
+        self.chk_bgp_var = tk.BooleanVar(value=True)
+        self.chk_iface_var = tk.BooleanVar(value=True)
+        self.chk_vrrp_var = tk.BooleanVar(value=True)
+        self.chk_ping_var = tk.BooleanVar(value=True)
+        self.chk_screenshot_var = tk.BooleanVar(value=True)
+
+        ttk.Checkbutton(profile_frame, text="📡 BGP Check", variable=self.chk_bgp_var).pack(side="left", padx=(0, 6))
+        ttk.Checkbutton(profile_frame, text="🔌 Interfaces", variable=self.chk_iface_var).pack(side="left", padx=(0, 6))
+        ttk.Checkbutton(profile_frame, text="🔄 VRRP", variable=self.chk_vrrp_var).pack(side="left", padx=(0, 6))
+        ttk.Checkbutton(profile_frame, text="📶 Ping Test", variable=self.chk_ping_var).pack(side="left", padx=(0, 6))
+        ttk.Checkbutton(profile_frame, text="📷 Screenshots", variable=self.chk_screenshot_var).pack(side="left", padx=(0, 10))
+
+        ttk.Label(profile_frame, text="| Quick Profiles:", font=("Segoe UI", 9)).pack(side="left", padx=(0, 6))
+
+        tk.Button(
+            profile_frame, text="✅ Full Audit", font=("Segoe UI", 8, "bold"),
+            bg="#16a34a", fg="white", activebackground="#15803d", activeforeground="white",
+            relief="flat", cursor="hand2", padx=6, pady=1,
+            command=self._set_profile_all
+        ).pack(side="left", padx=(0, 4))
+
+        tk.Button(
+            profile_frame, text="⚡ Ping Only", font=("Segoe UI", 8, "bold"),
+            bg="#0284c7", fg="white", activebackground="#0369a1", activeforeground="white",
+            relief="flat", cursor="hand2", padx=6, pady=1,
+            command=self._set_profile_ping_only
+        ).pack(side="left", padx=(0, 4))
+
+        tk.Button(
+            profile_frame, text="🔍 Routing Only", font=("Segoe UI", 8, "bold"),
+            bg="#7c3aed", fg="white", activebackground="#6d28d9", activeforeground="white",
+            relief="flat", cursor="hand2", padx=6, pady=1,
+            command=self._set_profile_routing_only
+        ).pack(side="left")
+
         self.dual_cli_var = tk.BooleanVar(value=False)
         self.background_mode_var = tk.BooleanVar(value=False)
 
@@ -872,6 +913,21 @@ class VersaRouterAuditGUI:
         # Bindings
         self.tree.bind("<Double-1>", lambda e: self._open_evidence_viewer())
         self.tree.bind("<Button-3>", self._show_tree_context_menu)
+        # Tag colors
+        self.tree.tag_configure("pass", background="#e8f5e9", foreground="#2e7d32")
+        self.tree.tag_configure("fail", background="#ffebee", foreground="#c62828")
+        self.tree.tag_configure("error", background="#fff3e0", foreground="#ef6c00")
+
+        # Tab 2: Live Terminal Logs
+        tab_log = ttk.Frame(self.notebook)
+        self.notebook.add(tab_log, text=" 💻 Live Terminal Session ")
+
+        self.log_text = tk.Text(tab_log, font=("Consolas", 9), bg="#1e1e1e", fg="#d4d4d4", wrap="char")
+        log_scroll = ttk.Scrollbar(tab_log, orient="vertical", command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=log_scroll.set)
+        self.log_text.pack(side="left", fill="both", expand=True)
+        log_scroll.pack(side="right", fill="y")
+
 
     def _show_tree_context_menu(self, event):
         item = self.tree.identify_row(event.y)
@@ -928,21 +984,6 @@ class VersaRouterAuditGUI:
         self.chk_iface_var.set(True)
         self.chk_vrrp_var.set(True)
         self.chk_screenshot_var.set(True)
-
-        # Tag colors
-        self.tree.tag_configure("pass", background="#e8f5e9", foreground="#2e7d32")
-        self.tree.tag_configure("fail", background="#ffebee", foreground="#c62828")
-        self.tree.tag_configure("error", background="#fff3e0", foreground="#ef6c00")
-
-        # Tab 2: Live Terminal Logs
-        tab_log = ttk.Frame(self.notebook)
-        self.notebook.add(tab_log, text=" 💻 Live Terminal Session ")
-
-        self.log_text = tk.Text(tab_log, font=("Consolas", 9), bg="#1e1e1e", fg="#d4d4d4", wrap="char")
-        log_scroll = ttk.Scrollbar(tab_log, orient="vertical", command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=log_scroll.set)
-        self.log_text.pack(side="left", fill="both", expand=True)
-        log_scroll.pack(side="right", fill="y")
 
     def append_log(self, text):
         self.root.after(0, self._append_log_safe, text)
@@ -1468,7 +1509,7 @@ class VersaRouterAuditGUI:
         router_pass = self.router_pass_var.get() or director_pass
 
         controllers = []
-        target_workers = max(1, min(2, self.worker_count_var.get()))
+        target_workers = max(1, min(5, self.worker_count_var.get()))
         run_bg = self.background_mode_var.get()
         if target_workers > 1:
             terminals = PamTerminalController.find_all_terminals()
@@ -2618,16 +2659,15 @@ class VersaRouterAuditGUI:
     def _show_putty_worker_info(self):
         messagebox.showinfo(
             "PuTTY Parallel Concurrency Guide — Tata Communications",
-            "⚡ Parallel Workers Configuration:\n\n"
-            "• Current Recommended Limit: Maximum 2 Workers\n"
-            "  Running 2 parallel PuTTY terminals cuts total execution time in half "
-            "while maintaining 100% terminal stability and preventing keystroke collisions.\n\n"
-            "• Why Keep to Max 2?\n"
-            "  Testing reveals that exceeding 2 open PAM terminal sessions in ARCON virtual desktop environments "
-            "causes severe focus latency, CPU core saturation, and terminal buffer loss.\n\n"
-            "• 🚀 3+ Workers Coming Soon:\n"
-            "  An enterprise multi-terminal orchestrator is currently in development to safely support "
-            "higher concurrency without desktop PuTTY limitations."
+            "⚡ Parallel Workers Configuration (PuTTY):\n\n"
+            "• Supported Concurrency: Up to 5 Parallel Workers\n"
+            "  Running up to 5 parallel PuTTY terminals distributes router audit queues across\n"
+            "  all active sessions simultaneously, slashing total audit duration.\n\n"
+            "• Multi-Terminal Requirements:\n"
+            "  Open the required number of PuTTY / PAM windows on your desktop (1 to 5).\n"
+            "  The auditor will automatically detect and bind to each open terminal.\n\n"
+            "• Unified Output:\n"
+            "  All parallel workers stream live results safely into the same scorecard and Excel audit file."
         )
 
     def show_about(self):
@@ -3068,11 +3108,16 @@ class VersaRouterAuditGUI:
 
         # ── v1.0.2 ───────────────────────────────────────────────────────────
         version_card(inner, "1.0.2", "2026-10-28", [
-            ("⚡  Live Cloud Update Test", [
-                "Verification of containerized .pkg update delivery across corporate network.",
-                "Real-time GitHub Contents API synchronization with zero cache delay.",
-                "Direct streaming package download with 90s corporate proxy timeout.",
-                "Atomic binary replacement and zero-downtime application restart."
+            ("⚡  PuTTY Concurrency & Selective Audit Profiles", [
+                "Multi-terminal concurrency: Run up to 5 parallel PuTTY/PAM CLI sessions simultaneously (default: 2 workers).",
+                "Automated terminal discovery across up to 5 open PAM desktop windows with dynamic queue distribution.",
+                "Selective Command Execution: Granular checkboxes for BGP, Interfaces, VRRP, Ping Tests, and Screenshots.",
+                "One-Click Profiles: Instantly switch between Full Audit, Ping Only, or Routing Only modes."
+            ]),
+            ("🛡️  Corporate Proxy Resilience & Real-Time Sync", [
+                "Zero-auth direct update streaming (.pkg) bypassing corporate proxy .exe download blocks.",
+                "GitHub API-first live update checking with zero cache latency and 90-second connection timeout.",
+                "Atomic binary replacement with automated rollback protection and process restart."
             ])
         ])
 

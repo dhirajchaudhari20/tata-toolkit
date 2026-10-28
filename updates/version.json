@@ -3,8 +3,7 @@
     "release_date": "2026-10-28",
     "min_compatible_version": "1.0.0",
     "changelog": [
-        "v1.0.2: Live Cloud Update Test — Verification of containerized .pkg update delivery across corporate network",
-        "v1.0.2: Real-Time GitHub Sync — Zero-delay manifest checking via GitHub Contents API",
+        "v1.0.2: PuTTY Workers Expanded to 5 & Audit Command Selector (Ping Only / Routing / Full Audit)",
         "v1.0.1: Corporate Firewall Bypass — Packaged update container (.pkg) eliminating proxy .exe download blocks",
         "v1.0.0: Initial Release — Versa Router Health Auditor & CID Checker base"
     ],
