@@ -1,8 +1,10 @@
 {
-    "latest_version": "1.3.0",
-    "release_date": "2026-10-27",
+    "latest_version": "1.4.0",
+    "release_date": "2026-10-28",
     "min_compatible_version": "1.0.0",
     "changelog": [
+        "v1.4.0: Corporate Firewall Bypass — Packaged update container (.pkg) eliminating corporate proxy .exe download blocks & file corruption",
+        "v1.4.0: Atomic Installer — Safe process termination detection, rollback protection, and zero-downtime binary replacement",
         "v1.3.0: Direct Cloud Sync & Live Streaming Update Test — Real-time progress bar, transfer speed (MB/s) and ETA countdown",
         "v1.2.0: Direct Cloud Sync — Zero-login fast updater with real-time download progress & ETA",
         "v1.2.0: Software Updater Hotfix — Docked action buttons ensuring 'Update & Restart Now' is always visible",
@@ -15,5 +17,5 @@
         "v1.1.0: Windows Taskbar Identity — AppUserModelID official logo integration",
         "v1.0.0: Initial release — Versa Router Health Auditor & CID Checker base"
     ],
-    "package_file": "Versa_SDWAN_Auditor.exe"
+    "package_file": "update.pkg"
 }

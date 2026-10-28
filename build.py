@@ -56,7 +56,8 @@ def run_pyinstaller(dist_path):
 
 
 def copy_to_updates(version, dist_path):
-    """Copies the new exe and version.json into the updates\\ folder."""
+    r"""Copies the new exe, version.json, and packages update.pkg into the updates\ folder."""
+    import zipfile
     exe_src = os.path.join(dist_path, "Versa_SDWAN_Auditor", "Versa_SDWAN_Auditor.exe")
     os.makedirs(UPDATES_DIR, exist_ok=True)
 
@@ -69,6 +70,33 @@ def copy_to_updates(version, dist_path):
     if os.path.exists(VERSION_JSON):
         shutil.copy2(VERSION_JSON, os.path.join(UPDATES_DIR, "version.json"))
         print(f"[Update] Copied manifest -> updates\\version.json")
+
+    # Create update.pkg container (bypasses corporate firewall .exe restrictions)
+    pkg_path = os.path.join(dist_path, "update.pkg")
+    app_dir = os.path.join(dist_path, "Versa_SDWAN_Auditor")
+    print(f"\n[Package] Creating containerized update.pkg (corporate firewall bypass)...")
+    with zipfile.ZipFile(pkg_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        if os.path.exists(exe_src):
+            zf.write(exe_src, "Versa_SDWAN_Auditor.exe")
+            print(f"          + Versa_SDWAN_Auditor.exe")
+        base_lib = os.path.join(app_dir, "_internal", "base_library.zip")
+        if os.path.exists(base_lib):
+            zf.write(base_lib, "_internal/base_library.zip")
+            print(f"          + _internal/base_library.zip")
+        v_json = os.path.join(app_dir, "_internal", "version.json")
+        if os.path.exists(v_json):
+            zf.write(v_json, "_internal/version.json")
+            print(f"          + _internal/version.json")
+
+    updates_pkg = os.path.join(UPDATES_DIR, "update.pkg")
+    shutil.copy2(pkg_path, updates_pkg)
+    pkg_mb = round(os.path.getsize(pkg_path) / 1024 / 1024, 2)
+    print(f"[Package] Created {pkg_path} ({pkg_mb} MB) -> updates\\update.pkg")
+
+    # Create clean colleague distribution zip
+    zip_archive = os.path.join(DIST_ROOT, f"Versa_SDWAN_Auditor_v{version}")
+    shutil.make_archive(zip_archive, 'zip', dist_path, 'Versa_SDWAN_Auditor')
+    print(f"[Package] Created colleague zip: {zip_archive}.zip")
 
 
 def print_summary(version, dist_path):

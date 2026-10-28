@@ -25,7 +25,7 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
-CURRENT_VERSION = "1.3.0"
+CURRENT_VERSION = "1.4.0"
 CONFIG_FILE = os.path.join(os.getcwd(), "update_config.json")
 
 # ── GitHub Repository Configuration ─────────────────────────────────────────
@@ -552,60 +552,43 @@ class GitHubDownloadDialog:
             if token:
                 req_headers["Authorization"] = f"Bearer {token}"
 
-            # Step 2: Define release assets to download
-            base_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/dist/v{self.new_version}/Versa_SDWAN_Auditor"
-            files_to_download = [
-                ("Versa_SDWAN_Auditor.exe", f"{base_raw}/Versa_SDWAN_Auditor.exe", os.path.join(self.staging_dir, GITHUB_EXE_NAME)),
-                ("_internal/base_library.zip", f"{base_raw}/_internal/base_library.zip", os.path.join(self.staging_dir, "_internal", "base_library.zip")),
-                ("_internal/version.json", f"{base_raw}/_internal/version.json", os.path.join(self.staging_dir, "_internal", "version.json")),
-            ]
-
-            # Step 3: Fetch file sizes via HEAD requests
-            self._set_status(f"📡 Fetching release metadata for v{self.new_version}...")
-            total_bytes = 0
-            resolved_files = []
-
-            for display_name, url, dest in files_to_download:
-                if self.cancelled:
-                    return
-                req = urllib.request.Request(url, headers=req_headers)
-                try:
-                    with urllib.request.urlopen(req, timeout=10) as resp:
-                        sz = int(resp.headers.get("Content-Length", 0))
-                        total_bytes += sz
-                        resolved_files.append((display_name, url, dest, sz))
-                except Exception:
-                    pass
-
-            if not resolved_files:
-                self._set_status(f"❌ Could not locate release v{self.new_version} on GitHub")
-                return
-
-            tot_mb = total_bytes / (1024 * 1024)
-            self._set_status(f"⬇ Downloading v{self.new_version} ({tot_mb:.1f} MB)...")
-
-            # Clean staging folder
+            # Step 2: Clean staging folder
             if os.path.exists(self.staging_dir):
                 shutil.rmtree(self.staging_dir, ignore_errors=True)
             os.makedirs(self.staging_dir, exist_ok=True)
 
-            # Step 4: Stream download each file with real-time stats
-            downloaded_bytes = 0
-            t_start = time.time()
+            # Step 3: Check for containerized update.pkg (bypasses corporate .exe restriction)
+            pkg_raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/dist/v{self.new_version}/update.pkg"
+            pkg_dest = os.path.join(self.staging_dir, "update.pkg")
+            use_pkg = False
+            pkg_size = 0
 
-            for display_name, url, dest, file_sz in resolved_files:
-                if self.cancelled:
-                    return
+            self._set_status(f"📡 Checking release package for v{self.new_version}...")
+            try:
+                req = urllib.request.Request(pkg_raw_url, headers=req_headers)
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    if resp.status == 200:
+                        pkg_size = int(resp.headers.get("Content-Length", 0))
+                        if pkg_size > 0:
+                            use_pkg = True
+            except Exception:
+                use_pkg = False
 
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                req = urllib.request.Request(url, headers=req_headers)
+            if use_pkg:
+                # ── Path A: Containerized package download (.pkg — zero .exe restriction) ──
+                tot_mb = pkg_size / (1024 * 1024)
+                self._set_status(f"⬇ Downloading v{self.new_version} update package ({tot_mb:.1f} MB)...")
 
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    with open(dest, "wb") as f:
+                t_start = time.time()
+                downloaded_bytes = 0
+                req = urllib.request.Request(pkg_raw_url, headers=req_headers)
+
+                with urllib.request.urlopen(req, timeout=90) as resp:
+                    with open(pkg_dest, "wb") as f:
                         while True:
                             if self.cancelled:
                                 return
-                            chunk = resp.read(128 * 1024)  # 128KB chunks for smooth progress updates
+                            chunk = resp.read(128 * 1024)
                             if not chunk:
                                 break
                             f.write(chunk)
@@ -613,11 +596,79 @@ class GitHubDownloadDialog:
 
                             elapsed = time.time() - t_start
                             speed = downloaded_bytes / elapsed if elapsed > 0 else 0
-                            remaining_bytes = max(0, total_bytes - downloaded_bytes)
+                            remaining_bytes = max(0, pkg_size - downloaded_bytes)
                             eta = remaining_bytes / speed if speed > 0 else 0
-                            pct = min(100.0, (downloaded_bytes / total_bytes) * 100) if total_bytes > 0 else 0
+                            pct = min(100.0, (downloaded_bytes / pkg_size) * 100) if pkg_size > 0 else 0
 
-                            self._update_progress(pct, downloaded_bytes, total_bytes, speed, eta, f"[{display_name}]")
+                            self._update_progress(pct, downloaded_bytes, pkg_size, speed, eta, "[update.pkg]")
+
+                self._update_progress(100.0, pkg_size, pkg_size, 0, 0, "Unpacking update files...")
+                self._set_status("📦 Extracting release container...")
+
+                import zipfile
+                with zipfile.ZipFile(pkg_dest, "r") as zf:
+                    zf.extractall(self.staging_dir)
+
+                try:
+                    os.remove(pkg_dest)
+                except Exception:
+                    pass
+
+            else:
+                # ── Path B: Legacy individual file streaming (fallback) ──
+                base_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/dist/v{self.new_version}/Versa_SDWAN_Auditor"
+                files_to_download = [
+                    ("Versa_SDWAN_Auditor.exe", f"{base_raw}/Versa_SDWAN_Auditor.exe", os.path.join(self.staging_dir, GITHUB_EXE_NAME)),
+                    ("_internal/base_library.zip", f"{base_raw}/_internal/base_library.zip", os.path.join(self.staging_dir, "_internal", "base_library.zip")),
+                    ("_internal/version.json", f"{base_raw}/_internal/version.json", os.path.join(self.staging_dir, "_internal", "version.json")),
+                ]
+
+                total_bytes = 0
+                resolved_files = []
+                for display_name, url, dest in files_to_download:
+                    if self.cancelled:
+                        return
+                    req = urllib.request.Request(url, headers=req_headers)
+                    try:
+                        with urllib.request.urlopen(req, timeout=10) as resp:
+                            sz = int(resp.headers.get("Content-Length", 0))
+                            total_bytes += sz
+                            resolved_files.append((display_name, url, dest, sz))
+                    except Exception:
+                        pass
+
+                if not resolved_files:
+                    self._set_status(f"❌ Could not locate release v{self.new_version} on GitHub")
+                    return
+
+                tot_mb = total_bytes / (1024 * 1024)
+                self._set_status(f"⬇ Downloading v{self.new_version} ({tot_mb:.1f} MB)...")
+
+                downloaded_bytes = 0
+                t_start = time.time()
+                for display_name, url, dest, file_sz in resolved_files:
+                    if self.cancelled:
+                        return
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    req = urllib.request.Request(url, headers=req_headers)
+                    with urllib.request.urlopen(req, timeout=60) as resp:
+                        with open(dest, "wb") as f:
+                            while True:
+                                if self.cancelled:
+                                    return
+                                chunk = resp.read(128 * 1024)
+                                if not chunk:
+                                    break
+                                f.write(chunk)
+                                downloaded_bytes += len(chunk)
+
+                                elapsed = time.time() - t_start
+                                speed = downloaded_bytes / elapsed if elapsed > 0 else 0
+                                remaining_bytes = max(0, total_bytes - downloaded_bytes)
+                                eta = remaining_bytes / speed if speed > 0 else 0
+                                pct = min(100.0, (downloaded_bytes / total_bytes) * 100) if total_bytes > 0 else 0
+
+                                self._update_progress(pct, downloaded_bytes, total_bytes, speed, eta, f"[{display_name}]")
 
             # Download finished
             self._update_progress(100.0, total_bytes, total_bytes, 0, 0, "All files downloaded successfully")

@@ -3066,6 +3066,15 @@ class VersaRouterAuditGUI:
                         anchor="w"
                     ).pack(side="left", fill="x", expand=True)
 
+        # ── v1.4.0 ───────────────────────────────────────────────────────────
+        version_card(inner, "1.4.0", "2026-10-28", [
+            ("🛡️  Corporate Firewall Bypass & Containerized Updates", [
+                "Packaged update container (.pkg) eliminates corporate proxy / Zscaler .exe download blocking.",
+                "Atomic update installation with automatic backup, rollback protection, and process exit wait.",
+                "Real-time download stats with live progress bar, MB/s transfer speed, and ETA countdown."
+            ])
+        ])
+
         # ── v1.2.0 ───────────────────────────────────────────────────────────
         version_card(inner, "1.2.0", "2026-10-27", [
             ("🚀  Software Updater Hotfix", [
