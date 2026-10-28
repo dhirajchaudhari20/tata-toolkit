@@ -2,3 +2,9 @@ id-pass.txt
 __pycache__/
 logs/
 build/
+*.xlsx
+*.zip
+dist/*.zip
+screenshots/
+user_dc_routers.txt
+user_cpe_routers.txt

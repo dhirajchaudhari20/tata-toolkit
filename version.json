@@ -3,7 +3,7 @@
     "release_date": "2026-10-28",
     "min_compatible_version": "1.0.0",
     "changelog": [
-        "v1.0.2: PuTTY Workers Expanded to 5 & Audit Command Selector (Ping Only / Routing / Full Audit)",
+        "v1.0.2: Section 3 DC-to-Branch Mesh Ping Matrix (Odd/Even Rule, First 4 Transport VRs) & PuTTY Workers up to 5 with Audit Command Selector",
         "v1.0.1: Corporate Firewall Bypass — Packaged update container (.pkg) eliminating proxy .exe download blocks",
         "v1.0.0: Initial Release — Versa Router Health Auditor & CID Checker base"
     ],

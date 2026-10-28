@@ -414,10 +414,12 @@ class VersaRouterAuditGUI:
 
         self.tab_router = ttk.Frame(self.main_notebook)
         self.tab_cid = ttk.Frame(self.main_notebook)
+        self.tab_dc_mesh = ttk.Frame(self.main_notebook)
         self.tab_history = ttk.Frame(self.main_notebook)
 
         self.main_notebook.add(self.tab_router, text="  📡 Versa Router Health Auditor  ")
         self.main_notebook.add(self.tab_cid, text="  ⚡ TTBS CID Punchability Checker  ")
+        self.main_notebook.add(self.tab_dc_mesh, text="  🏢 DC to Branch Mesh Ping  ")
         self.main_notebook.add(self.tab_history, text="  🕒 Audit History & Past Records  ")
 
         # Initialize Tab 2: CID Punchability Checker
@@ -429,7 +431,16 @@ class VersaRouterAuditGUI:
             err_box = ttk.Label(self.tab_cid, text=f"Could not load CID Punchability Checker:\n{e}", foreground="red", padding=20)
             err_box.pack()
 
-        # Initialize Tab 3: Audit History & Past Records
+        # Initialize Tab 3: DC to Branch Mesh Ping Matrix
+        try:
+            from dc_mesh_tab import DCMeshPingFrame
+            self.dc_mesh_frame = DCMeshPingFrame(self.tab_dc_mesh, root=self.root, parent_gui=self)
+            self.dc_mesh_frame.pack(fill="both", expand=True)
+        except Exception as e:
+            err_box = ttk.Label(self.tab_dc_mesh, text=f"Could not load DC Mesh Ping Auditor:\n{e}", foreground="red", padding=20)
+            err_box.pack()
+
+        # Initialize Tab 4: Audit History & Past Records
         try:
             from history_tab import AuditHistoryFrame
             self.history_frame = AuditHistoryFrame(self.tab_history, root=self.root, parent_gui=self)
