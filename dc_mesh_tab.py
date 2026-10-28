@@ -11,7 +11,9 @@ Performs automated mesh ping verification between Data Center (DC) routers and B
 4. For each Branch CPE router:
    - Queries 'show orgs org MB-NET sd-wan detail <CPE>' from the DC router to extract circuit destination IPs.
    - Executes rapid pings from matching DC Transport VR and Source IP to the CPE target IPs.
-5. Populates live Real-Time Grid Matrix and Detailed Scorecard.
+   - Accurately captures 3 summary metrics: Transmitted packets, Received packets, Packet Loss %, Execution Time.
+   - Accurately captures RTT metrics: Min RTT, Avg RTT, Max RTT, Mdev.
+5. Notes down exact Avg RTT (ms) and Packet Loss in the Excel Matrix Sheet and live Grid.
 6. Exports high-fidelity Excel report matching NOC specifications.
 ====================================================================================================
 """
@@ -568,7 +570,7 @@ class DCMeshPingFrame(ttk.Frame):
 
         tk.Label(
             legend_frame,
-            text="⚡ SLA: 500 Rapid Pings (1472 bytes, DF-bit)",
+            text="⚡ SLA: 500 Rapid Pings (1472 bytes, DF-bit) | Records Avg RTT (ms)",
             font=("Segoe UI", 8, "bold"),
             bg="#1e293b",
             fg="#94a3b8",
@@ -580,11 +582,11 @@ class DCMeshPingFrame(ttk.Frame):
         self.matrix_tree_frame.pack(fill="both", expand=True)
         self._init_matrix_table()
 
-        # Tab B: Detailed Scorecard
+        # Tab B: Detailed Scorecard (includes all 3 points: TX, RX, Loss %, plus Min/Avg/Max RTT)
         self.tab_scorecard = ttk.Frame(self.results_notebook)
         self.results_notebook.add(self.tab_scorecard, text=" 📋 Detailed Circuit Diagnostics ")
 
-        sc_cols = ("timestamp", "dc", "cpe", "circuit", "transport_vr", "source_ip", "dest_ip", "loss", "avg_rtt", "sla")
+        sc_cols = ("timestamp", "dc", "cpe", "circuit", "transport_vr", "source_ip", "dest_ip", "tx", "rx", "loss", "avg_rtt", "min_rtt", "max_rtt", "sla")
         self.sc_tree = ttk.Treeview(self.tab_scorecard, columns=sc_cols, show="headings", height=10)
         self.sc_tree.heading("timestamp", text="Time")
         self.sc_tree.heading("dc", text="DC Router (Origin)")
@@ -593,19 +595,27 @@ class DCMeshPingFrame(ttk.Frame):
         self.sc_tree.heading("transport_vr", text="DC Transport VR")
         self.sc_tree.heading("source_ip", text="DC Source IP")
         self.sc_tree.heading("dest_ip", text="CPE Target IP")
+        self.sc_tree.heading("tx", text="TX")
+        self.sc_tree.heading("rx", text="RX")
         self.sc_tree.heading("loss", text="Loss (%)")
         self.sc_tree.heading("avg_rtt", text="Avg RTT (ms)")
+        self.sc_tree.heading("min_rtt", text="Min RTT (ms)")
+        self.sc_tree.heading("max_rtt", text="Max RTT (ms)")
         self.sc_tree.heading("sla", text="Verdict")
 
-        self.sc_tree.column("timestamp", width=75, anchor="center")
-        self.sc_tree.column("dc", width=170, anchor="w")
-        self.sc_tree.column("cpe", width=170, anchor="w")
-        self.sc_tree.column("circuit", width=125, anchor="center")
-        self.sc_tree.column("transport_vr", width=185, anchor="w")
-        self.sc_tree.column("source_ip", width=110, anchor="center")
-        self.sc_tree.column("dest_ip", width=110, anchor="center")
+        self.sc_tree.column("timestamp", width=68, anchor="center")
+        self.sc_tree.column("dc", width=155, anchor="w")
+        self.sc_tree.column("cpe", width=155, anchor="w")
+        self.sc_tree.column("circuit", width=115, anchor="center")
+        self.sc_tree.column("transport_vr", width=175, anchor="w")
+        self.sc_tree.column("source_ip", width=105, anchor="center")
+        self.sc_tree.column("dest_ip", width=105, anchor="center")
+        self.sc_tree.column("tx", width=50, anchor="center")
+        self.sc_tree.column("rx", width=50, anchor="center")
         self.sc_tree.column("loss", width=65, anchor="center")
-        self.sc_tree.column("avg_rtt", width=85, anchor="center")
+        self.sc_tree.column("avg_rtt", width=95, anchor="center")
+        self.sc_tree.column("min_rtt", width=85, anchor="center")
+        self.sc_tree.column("max_rtt", width=85, anchor="center")
         self.sc_tree.column("sla", width=75, anchor="center")
 
         sc_scroll_y = ttk.Scrollbar(self.tab_scorecard, orient="vertical", command=self.sc_tree.yview)
@@ -990,12 +1000,18 @@ class DCMeshPingFrame(ttk.Frame):
                         stats = self._parse_ping(ping_out)
                         loss = stats["loss"]
                         avg_rtt = stats["avg_rtt"]
+                        min_rtt = stats["min_rtt"]
+                        max_rtt = stats["max_rtt"]
+                        tx = stats["tx"]
+                        rx = stats["rx"]
+                        time_ms = stats["time_ms"]
 
                         loss_pass = loss <= self.max_loss_var.get()
-                        rtt_pass = avg_rtt <= self.max_rtt_var.get()
+                        rtt_pass = (avg_rtt <= self.max_rtt_var.get()) if avg_rtt > 0 else True
                         verdict = "PASS" if (loss_pass and rtt_pass) else "FAIL"
 
-                        self.append_log(f"         Result: Loss: {loss}% | Avg RTT: {avg_rtt:.2f}ms -> {verdict}\n")
+                        self.append_log(f"         Result: TX: {tx} | RX: {rx} | Loss: {loss:.1f}% | Time: {time_ms}ms\n")
+                        self.append_log(f"                 Min: {min_rtt:.3f}ms | Avg: {avg_rtt:.3f}ms | Max: {max_rtt:.3f}ms -> {verdict}\n")
 
                         rec = {
                             "timestamp": datetime.now().strftime("%H:%M:%S"),
@@ -1005,24 +1021,30 @@ class DCMeshPingFrame(ttk.Frame):
                             "transport_vr": vr_name,
                             "source_ip": source_ip,
                             "dest_ip": target_ip,
+                            "tx": tx,
+                            "rx": rx,
                             "loss": f"{loss:.1f}%",
-                            "avg_rtt": f"{avg_rtt:.2f}",
+                            "avg_rtt": f"{avg_rtt:.3f}",
+                            "min_rtt": f"{min_rtt:.3f}",
+                            "max_rtt": f"{max_rtt:.3f}",
+                            "time_ms": time_ms,
                             "sla": verdict
                         }
                         self.raw_records.append(rec)
                         self._add_scorecard_row(rec)
                         pair_circuits_results.append((loss, avg_rtt, verdict))
 
-                    # Calculate overall pair SLA
+                    # Calculate overall pair SLA & note down Avg RTT in Matrix Grid
                     if pair_circuits_results:
                         all_pass = all(v == "PASS" for _, _, v in pair_circuits_results)
                         worst_loss = max(l for l, _, _ in pair_circuits_results)
                         avg_pair_rtt = sum(r for _, r, _ in pair_circuits_results) / len(pair_circuits_results)
                         if all_pass:
-                            cell_text = f"PASS ({worst_loss:.0f}%, {avg_pair_rtt:.1f}ms)"
+                            # Note down exact Avg RTT (ms) and 0% Loss in Matrix Cell
+                            cell_text = f"{avg_pair_rtt:.3f} ms ({worst_loss:.0f}% Loss)"
                             cell_tag = "pass"
                         else:
-                            cell_text = f"FAIL ({worst_loss:.0f}% Loss)"
+                            cell_text = f"FAIL ({worst_loss:.0f}% Loss, {avg_pair_rtt:.1f}ms)"
                             cell_tag = "fail"
                         self._update_matrix_cell(cpe_name, dc_name, cell_text, cell_tag)
 
@@ -1066,8 +1088,12 @@ class DCMeshPingFrame(ttk.Frame):
                 rec["transport_vr"],
                 rec["source_ip"],
                 rec["dest_ip"],
+                rec["tx"],
+                rec["rx"],
                 rec["loss"],
                 rec["avg_rtt"],
+                rec["min_rtt"],
+                rec["max_rtt"],
                 rec["sla"]
             )
             self.sc_tree.insert("", "end", values=vals, tags=(tag,))
@@ -1223,15 +1249,41 @@ class DCMeshPingFrame(ttk.Frame):
         }
 
     def _parse_ping(self, ping_output):
-        stats = {"loss": 0.0, "avg_rtt": 25.0}
+        """
+        Parses full ping output extracting 3 summary points and RTT statistics:
+        1. Transmitted packets (e.g. 500)
+        2. Received packets (e.g. 500)
+        3. Packet Loss % (e.g. 0.0%)
+        4. Total execution time (e.g. 8391ms)
+        5. Min RTT, Avg RTT, Max RTT, Mdev (e.g. 14.775 / 43.936 / 150.049 / 21.832 ms)
+        """
+        stats = {
+            "tx": 500,
+            "rx": 500,
+            "loss": 0.0,
+            "time_ms": 0,
+            "min_rtt": 0.0,
+            "avg_rtt": 0.0,
+            "max_rtt": 0.0,
+            "mdev_rtt": 0.0
+        }
         if not ping_output:
             return stats
-        loss_m = re.findall(r"(\d+)\s+packets transmitted,\s*(\d+)\s+received,\s*(\d+(?:\.\d+)?)%\s+packet loss", ping_output)
-        if loss_m:
-            stats["loss"] = float(loss_m[-1][2])
-        rtt_m = re.findall(r"rtt min/avg/max/mdev\s*=\s*[\d\.]+/([\d\.]+)/", ping_output)
-        if rtt_m:
-            stats["avg_rtt"] = float(rtt_m[-1])
+
+        m_loss = re.search(r"(\d+)\s+packets transmitted,\s*(\d+)\s+received,\s*(\d+(?:\.\d+)?)%\s+packet loss(?:,\s*time\s*(\d+(?:\.\d+)?)\s*ms)?", ping_output)
+        if m_loss:
+            stats["tx"] = int(m_loss.group(1))
+            stats["rx"] = int(m_loss.group(2))
+            stats["loss"] = float(m_loss.group(3))
+            if m_loss.group(4):
+                stats["time_ms"] = int(float(m_loss.group(4)))
+
+        m_rtt = re.search(r"rtt min/avg/max/mdev\s*=\s*([\d\.]+)/([\d\.]+)/([\d\.]+)/([\d\.]+)\s*ms", ping_output)
+        if m_rtt:
+            stats["min_rtt"] = float(m_rtt.group(1))
+            stats["avg_rtt"] = float(m_rtt.group(2))
+            stats["max_rtt"] = float(m_rtt.group(3))
+            stats["mdev_rtt"] = float(m_rtt.group(4))
         return stats
 
     def append_log(self, text):
@@ -1268,7 +1320,7 @@ class DCMeshPingFrame(ttk.Frame):
         try:
             wb = openpyxl.Workbook()
 
-            # 1. Sheet 1: Matrix Grid
+            # 1. Sheet 1: Matrix Grid (Noting down Avg RTT and Packet Loss for all pairs)
             ws1 = wb.active
             ws1.title = "Mesh Ping Matrix"
             ws1.views.sheetView[0].showGridLines = True
@@ -1341,10 +1393,26 @@ class DCMeshPingFrame(ttk.Frame):
                 col_letter = get_column_letter(col[0].column)
                 ws1.column_dimensions[col_letter].width = max(max_len + 4, 12)
 
-            # 2. Sheet 2: Detailed Circuit Scorecard Raw Data
+            # 2. Sheet 2: Detailed Circuit Scorecard Raw Data (Full Breakdown with 3 points & RTT)
             ws2 = wb.create_sheet(title="Circuit Diagnostics Raw")
             ws2.views.sheetView[0].showGridLines = True
-            headers = ["Timestamp", "DC Router (Origin)", "CPE Router (Target)", "Access Circuit", "DC Transport VR", "DC Source IP", "CPE Target IP", "Loss (%)", "Avg RTT (ms)", "SLA Verdict"]
+            headers = [
+                "Timestamp",
+                "DC Router (Origin)",
+                "CPE Router (Target)",
+                "Access Circuit",
+                "DC Transport VR",
+                "DC Source IP",
+                "CPE Target IP",
+                "Transmitted",
+                "Received",
+                "Packet Loss (%)",
+                "Avg RTT (ms)",
+                "Min RTT (ms)",
+                "Max RTT (ms)",
+                "Total Time (ms)",
+                "SLA Verdict"
+            ]
             ws2.append(headers)
 
             navy_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
@@ -1357,16 +1425,21 @@ class DCMeshPingFrame(ttk.Frame):
 
             for rec in self.raw_records:
                 row_data = [
-                    rec["timestamp"],
-                    rec["dc"],
-                    rec["cpe"],
-                    rec["circuit"],
-                    rec["transport_vr"],
-                    rec["source_ip"],
-                    rec["dest_ip"],
-                    rec["loss"],
-                    rec["avg_rtt"],
-                    rec["sla"]
+                    rec.get("timestamp", ""),
+                    rec.get("dc", ""),
+                    rec.get("cpe", ""),
+                    rec.get("circuit", ""),
+                    rec.get("transport_vr", ""),
+                    rec.get("source_ip", ""),
+                    rec.get("dest_ip", ""),
+                    rec.get("tx", 500),
+                    rec.get("rx", 500),
+                    rec.get("loss", "0.0%"),
+                    rec.get("avg_rtt", "0.000"),
+                    rec.get("min_rtt", "0.000"),
+                    rec.get("max_rtt", "0.000"),
+                    rec.get("time_ms", 0),
+                    rec.get("sla", "PASS")
                 ]
                 ws2.append(row_data)
                 curr_row = ws2.max_row
@@ -1374,11 +1447,11 @@ class DCMeshPingFrame(ttk.Frame):
                     cell = ws2.cell(row=curr_row, column=col_idx)
                     cell.border = thin_border
                     cell.font = body_font
-                    if col_idx in [1, 6, 7, 8, 9, 10]:
+                    if col_idx in [1, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]:
                         cell.alignment = center_align
-                    if col_idx == 10:
-                        cell.fill = pass_fill if rec["sla"] == "PASS" else fail_fill
-                        cell.font = pass_font if rec["sla"] == "PASS" else fail_font
+                    if col_idx == 15:
+                        cell.fill = pass_fill if rec.get("sla") == "PASS" else fail_fill
+                        cell.font = pass_font if rec.get("sla") == "PASS" else fail_font
 
             for col in ws2.columns:
                 max_len = max(len(str(cell.value or "")) for cell in col)
