@@ -650,8 +650,8 @@ class DCMeshPingFrame(ttk.Frame):
         cols = ["cpe"] + dcs
 
         self.matrix_tree = ttk.Treeview(self.matrix_tree_frame, columns=cols, show="headings", height=12)
-        self.matrix_tree.heading("cpe", text="Updated CPE Host Name", anchor="w")
-        self.matrix_tree.column("cpe", width=220, minwidth=180, anchor="w")
+        self.matrix_tree.heading("cpe", text="CPE Host Name  (Circuit)", anchor="w")
+        self.matrix_tree.column("cpe", width=260, minwidth=200, anchor="w")
 
         for dc in dcs:
             self.matrix_tree.heading(dc, text=dc, anchor="center")
@@ -811,9 +811,7 @@ class DCMeshPingFrame(ttk.Frame):
             return
 
         self._init_matrix_table()
-        for cpe in cpes:
-            row_vals = [cpe] + ["Pending" for _ in dcs]
-            self.matrix_tree.insert("", "end", iid=cpe, values=row_vals, tags=("pending",))
+        self._matrix_row_order = []   # tracks insertion order of (cpe, circuit) row keys
 
         self.is_running = True
         self.stop_event.clear()
@@ -924,7 +922,7 @@ class DCMeshPingFrame(ttk.Frame):
                 if not dc_login_ok:
                     self.append_log(f"[!] Warning: Could not establish CLI session on DC {dc_name}. Marking column skipped.\n")
                     for cpe in cpes:
-                        self._update_matrix_cell(cpe, dc_name, "Unreachable", "error")
+                        self._update_matrix_cell(cpe, "N/A", dc_name, "Unreachable", "error")
                     continue
 
                 # Step 2: Query 'show bgp neighbor brief' and extract first 4 Transport VRs + Calculated Source IPs
@@ -971,7 +969,7 @@ class DCMeshPingFrame(ttk.Frame):
                     cpe_circuits = parse_cpe_sdwan_circuits(sdwan_out)
                     if not cpe_circuits:
                         self.append_log(f"  [!] No circuits found in NAT Status for {cpe_name}.\n")
-                        self._update_matrix_cell(cpe_name, dc_name, "No Circuits", "error")
+                        self._update_matrix_cell(cpe_name, "N/A", dc_name, "No Circuits", "error")
                         continue
 
                     pair_circuits_results = []
@@ -1034,19 +1032,16 @@ class DCMeshPingFrame(ttk.Frame):
                         self._add_scorecard_row(rec)
                         pair_circuits_results.append((loss, avg_rtt, verdict))
 
-                    # Calculate overall pair SLA & note down Avg RTT in Matrix Grid
-                    if pair_circuits_results:
-                        all_pass = all(v == "PASS" for _, _, v in pair_circuits_results)
-                        worst_loss = max(l for l, _, _ in pair_circuits_results)
-                        avg_pair_rtt = sum(r for _, r, _ in pair_circuits_results) / len(pair_circuits_results)
-                        if all_pass:
-                            # Note down exact Avg RTT (ms) and 0% Loss in Matrix Cell
-                            cell_text = f"{avg_pair_rtt:.3f} ms ({worst_loss:.0f}% Loss)"
-                            cell_tag = "pass"
+                        # Update matrix cell immediately per-circuit (one row per CPE+circuit)
+                        if verdict == "PASS":
+                            c_cell_text = f"{avg_rtt:.3f} ms ({loss:.0f}% Loss)"
+                            c_cell_tag = "pass"
                         else:
-                            cell_text = f"FAIL ({worst_loss:.0f}% Loss, {avg_pair_rtt:.1f}ms)"
-                            cell_tag = "fail"
-                        self._update_matrix_cell(cpe_name, dc_name, cell_text, cell_tag)
+                            c_cell_text = f"FAIL ({loss:.0f}% Loss, {avg_rtt:.1f}ms)"
+                            c_cell_tag = "fail"
+                        self._update_matrix_cell(cpe_name, c_name, dc_name, c_cell_text, c_cell_tag)
+
+                    # No longer computing averaged pair cell — each circuit has its own row
 
                 # Exit DC Router CLI back to Director
                 self.append_log(f"[*] Completed tests from DC {dc_name}. Exiting back to Director...\n")
@@ -1059,20 +1054,37 @@ class DCMeshPingFrame(ttk.Frame):
             self.append_log(f"\n[!] Unexpected Error during Mesh Audit: {e}\n")
             self._finish_audit(success=False)
 
-    def _update_matrix_cell(self, cpe_name, dc_name, verdict_text, tag):
+    def _update_matrix_cell(self, cpe_name, circuit_name, dc_name, verdict_text, tag):
+        """Insert or update a per-circuit row in the matrix grid.
+        Row iid = 'cpe_name|circuit_name' so each CPE circuit gets its own dedicated row.
+        """
+        row_iid = f"{cpe_name}|{circuit_name}"
+        row_label = f"{cpe_name}  ({circuit_name})"
+
         def _apply():
             try:
                 dcs = self._get_dc_list()
-                if dc_name in dcs:
-                    dc_col_idx = dcs.index(dc_name) + 1
-                    current_vals = list(self.matrix_tree.item(cpe_name, "values"))
-                    if len(current_vals) > dc_col_idx:
-                        current_vals[dc_col_idx] = verdict_text
-                        self.matrix_tree.item(cpe_name, values=current_vals, tags=(tag,))
-                        self.matrix_data[(cpe_name, dc_name)] = {
-                            "verdict": verdict_text,
-                            "tag": tag
-                        }
+                if dc_name not in dcs:
+                    return
+                dc_col_idx = dcs.index(dc_name) + 1  # +1 because col[0] = "cpe" label
+
+                # Create the row if it doesn't exist yet
+                if not self.matrix_tree.exists(row_iid):
+                    row_vals = [row_label] + ["–" for _ in dcs]
+                    self.matrix_tree.insert("", "end", iid=row_iid, values=row_vals, tags=("pending",))
+                    if not hasattr(self, "_matrix_row_order"):
+                        self._matrix_row_order = []
+                    self._matrix_row_order.append(row_iid)
+
+                # Update the specific DC column in this row
+                current_vals = list(self.matrix_tree.item(row_iid, "values"))
+                if len(current_vals) > dc_col_idx:
+                    current_vals[dc_col_idx] = verdict_text
+                    self.matrix_tree.item(row_iid, values=current_vals, tags=(tag,))
+                    self.matrix_data[(row_iid, dc_name)] = {
+                        "verdict": verdict_text,
+                        "tag": tag
+                    }
             except Exception:
                 pass
         self.root.after(0, _apply)
@@ -1346,7 +1358,7 @@ class DCMeshPingFrame(ttk.Frame):
 
             # Title Row at Row 1: Columns E to K
             cpe_header_cell = ws1.cell(row=1, column=5)
-            cpe_header_cell.value = "Updated CPE Host Name"
+            cpe_header_cell.value = "CPE Host Name  (Circuit)"
             cpe_header_cell.fill = orange_fill
             cpe_header_cell.font = white_font
             cpe_header_cell.alignment = center_align
@@ -1360,10 +1372,12 @@ class DCMeshPingFrame(ttk.Frame):
                 dc_cell.alignment = center_align
                 dc_cell.border = thin_border
 
-            # Data Rows: Row 2+
-            for r_idx, cpe_name in enumerate(cpes, start=2):
+            # Data Rows: Row 2+ — one row per CPE+Circuit (from matrix tree)
+            row_iids = self.matrix_tree.get_children()
+            for r_idx, row_iid in enumerate(row_iids, start=2):
+                row_label = self.matrix_tree.item(row_iid, "values")[0] if self.matrix_tree.item(row_iid, "values") else row_iid
                 cpe_cell = ws1.cell(row=r_idx, column=5)
-                cpe_cell.value = cpe_name
+                cpe_cell.value = row_label
                 cpe_cell.font = Font(name="Segoe UI", size=9, bold=True)
                 cpe_cell.alignment = left_align
                 cpe_cell.border = thin_border
@@ -1372,7 +1386,7 @@ class DCMeshPingFrame(ttk.Frame):
                     val_cell = ws1.cell(row=r_idx, column=dc_idx)
                     val_cell.border = thin_border
 
-                    res = self.matrix_data.get((cpe_name, dc_name))
+                    res = self.matrix_data.get((row_iid, dc_name))
                     if res:
                         val_cell.value = res["verdict"]
                         if res["tag"] == "pass":
@@ -1383,7 +1397,7 @@ class DCMeshPingFrame(ttk.Frame):
                             val_cell.font = fail_font
                         val_cell.alignment = center_align
                     else:
-                        val_cell.value = "N/A"
+                        val_cell.value = "–"
                         val_cell.font = body_font
                         val_cell.alignment = center_align
 
