@@ -1262,7 +1262,10 @@ class DCMeshPingFrame(ttk.Frame):
 
     def _parse_ping(self, ping_output):
         """
-        Parses full ping output extracting 3 summary points and RTT statistics:
+        Parses full ping output extracting 3 summary points and RTT statistics.
+        Uses findall + LAST match to correctly handle terminal buffers that may contain
+        output from multiple previous ping commands — always picks the most recent result.
+
         1. Transmitted packets (e.g. 500)
         2. Received packets (e.g. 500)
         3. Packet Loss % (e.g. 0.0%)
@@ -1282,20 +1285,30 @@ class DCMeshPingFrame(ttk.Frame):
         if not ping_output:
             return stats
 
-        m_loss = re.search(r"(\d+)\s+packets transmitted,\s*(\d+)\s+received,\s*(\d+(?:\.\d+)?)%\s+packet loss(?:,\s*time\s*(\d+(?:\.\d+)?)\s*ms)?", ping_output)
-        if m_loss:
-            stats["tx"] = int(m_loss.group(1))
-            stats["rx"] = int(m_loss.group(2))
-            stats["loss"] = float(m_loss.group(3))
-            if m_loss.group(4):
-                stats["time_ms"] = int(float(m_loss.group(4)))
+        # Use findall to collect ALL matches, then take the LAST one (most recent ping result)
+        all_loss = re.findall(
+            r"(\d+)\s+packets transmitted,\s*(\d+)\s+received,\s*(\d+(?:\.\d+)?)%\s+packet loss(?:,\s*time\s*(\d+(?:\.\d+)?)\s*ms)?",
+            ping_output
+        )
+        if all_loss:
+            m = all_loss[-1]   # last match = most recent ping in buffer
+            stats["tx"]      = int(m[0])
+            stats["rx"]      = int(m[1])
+            stats["loss"]    = float(m[2])
+            if m[3]:
+                stats["time_ms"] = int(float(m[3]))
 
-        m_rtt = re.search(r"rtt min/avg/max/mdev\s*=\s*([\d\.]+)/([\d\.]+)/([\d\.]+)/([\d\.]+)\s*ms", ping_output)
-        if m_rtt:
-            stats["min_rtt"] = float(m_rtt.group(1))
-            stats["avg_rtt"] = float(m_rtt.group(2))
-            stats["max_rtt"] = float(m_rtt.group(3))
-            stats["mdev_rtt"] = float(m_rtt.group(4))
+        all_rtt = re.findall(
+            r"rtt min/avg/max/mdev\s*=\s*([\d\.]+)/([\d\.]+)/([\d\.]+)/([\d\.]+)\s*ms",
+            ping_output
+        )
+        if all_rtt:
+            m = all_rtt[-1]   # last match = most recent ping in buffer
+            stats["min_rtt"]  = float(m[0])
+            stats["avg_rtt"]  = float(m[1])
+            stats["max_rtt"]  = float(m[2])
+            stats["mdev_rtt"] = float(m[3])
+
         return stats
 
     def append_log(self, text):
