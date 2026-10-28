@@ -814,12 +814,12 @@ class DCMeshPingFrame(ttk.Frame):
         self.stop_btn.config(state="normal")
         self.export_btn.config(state="disabled")
 
-        self.status_var.set("Initializing DC Mesh Audit...")
+        self.status_var.set("Connecting to PuTTY / PAM Terminal...")
         self.append_log(f"\n{'='*75}\n")
         self.append_log(f"[*] Starting DC-to-Branch Mesh Ping Audit at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        self.append_log(f"[*] Total DC Routers (Origins)    : {len(dcs)}\n")
+        self.append_log(f"[*] Total DC Routers (Origins)      : {len(dcs)}\n")
         self.append_log(f"[*] Total CPE Routers (Destinations): {len(cpes)}\n")
-        self.append_log(f"[*] Concurrency Limit              : {self.worker_count_var.get()} worker(s)\n")
+        self.append_log(f"[*] Concurrency Limit                : {self.worker_count_var.get()} worker(s)\n")
         self.append_log(f"{'='*75}\n\n")
 
         threading.Thread(target=self._mesh_audit_worker, daemon=True).start()
@@ -870,18 +870,28 @@ class DCMeshPingFrame(ttk.Frame):
         if self.conn_mode_var.get() == "pam_terminal":
             if not HAS_PAM:
                 self.append_log("[!] Error: PAM Terminal controller module not available.\n")
-                self._finish_audit()
+                self.root.after(0, lambda: messagebox.showerror("Missing Module", "PAM Terminal automation module is not available."))
+                self._finish_audit(success=False)
                 return
 
             controller = PamTerminalController(log_callback=self.append_log, worker_id=1)
             hwnd, title = controller.find_terminal_window()
             if not hwnd:
-                self.append_log("[!] Error: No open PuTTY / PAM terminals found on desktop!\n")
-                self.append_log("[*] Please connect to PAM and launch PuTTY first.\n")
-                self._finish_audit()
+                self.append_log("\n[-] Could not locate any open PuTTY / ARCON PAM Terminal window on desktop.\n")
+                self.append_log("[*] Please connect to ARCON PAM, launch your PuTTY terminal window, and leave it open.\n\n")
+                self.root.after(0, lambda: self.status_var.set("Error: No open PuTTY / PAM terminal window found!"))
+                self.root.after(0, lambda: messagebox.showerror(
+                    "PuTTY Window Not Found",
+                    "Could not locate any active PuTTY or ARCON PAM terminal window on your desktop.\n\n"
+                    "1. Please open your PuTTY session in ARCON PAM.\n"
+                    "2. Leave the PuTTY window open and visible on screen.\n"
+                    "3. Click 'Start DC Mesh Ping Audit' again.",
+                    parent=self
+                ))
+                self._finish_audit(success=False)
                 return
 
-            self.append_log(f"[+] Found active PAM Terminal window: '{title}' (HWND: {hwnd})\n")
+            self.append_log(f"\n[+] Found active PAM Terminal window: '{title}' (HWND: {hwnd})\n")
             controller.activate_window()
             time.sleep(0.5)
             controller.clear_line()
@@ -1016,16 +1026,16 @@ class DCMeshPingFrame(ttk.Frame):
                             cell_tag = "fail"
                         self._update_matrix_cell(cpe_name, dc_name, cell_text, cell_tag)
 
-                # Exit DC Router CLI back to Director Linux shell
+                # Exit DC Router CLI back to Director
                 self.append_log(f"[*] Completed tests from DC {dc_name}. Exiting back to Director...\n")
                 controller.send_command("exit", wait_after=2.0)
                 controller.send_command("exit", wait_after=2.5)
 
+            self._finish_audit(success=(completed_pairs > 0))
+
         except Exception as e:
             self.append_log(f"\n[!] Unexpected Error during Mesh Audit: {e}\n")
-
-        finally:
-            self._finish_audit()
+            self._finish_audit(success=False)
 
     def _update_matrix_cell(self, cpe_name, dc_name, verdict_text, tag):
         def _apply():
@@ -1063,17 +1073,20 @@ class DCMeshPingFrame(ttk.Frame):
             self.sc_tree.insert("", "end", values=vals, tags=(tag,))
         self.root.after(0, _apply)
 
-    def _finish_audit(self):
+    def _finish_audit(self, success=True):
         self.is_running = False
         self.root.after(0, lambda: self.start_btn.config(state="normal"))
         self.root.after(0, lambda: self.pause_btn.config(state="disabled", text="⏸  Pause", bg="#d97706"))
         self.root.after(0, lambda: self.stop_btn.config(state="disabled"))
-        self.root.after(0, lambda: self.export_btn.config(state="normal"))
-        self.root.after(0, lambda: self.status_var.set("Status: Audit Complete! Ready to Export Excel."))
-        self.append_log(f"\n{'='*75}\n")
-        self.append_log(f"[✓] DC Mesh Ping Audit Completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        self.append_log(f"[✓] Results ready in Matrix Grid and Detailed Scorecard.\n")
-        self.append_log(f"{'='*75}\n\n")
+        self.root.after(0, lambda: self.export_btn.config(state="normal" if success else "disabled"))
+        if success:
+            self.root.after(0, lambda: self.status_var.set("Status: Audit Complete! Ready to Export Excel."))
+            self.append_log(f"\n{'='*75}\n")
+            self.append_log(f"[✓] DC Mesh Ping Audit Completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self.append_log(f"[✓] Results ready in Matrix Grid and Detailed Scorecard.\n")
+            self.append_log(f"{'='*75}\n\n")
+        else:
+            self.root.after(0, lambda: self.status_var.set("Status: Audit Stopped / Not Started"))
 
     # ──────────────────────────────────────────────────────────────────────────
     # Protocol Helpers (Login, Terminal Waiting, VR Matching, Ping Parsing)
@@ -1085,73 +1098,78 @@ class DCMeshPingFrame(ttk.Frame):
         """
         self.append_log(f"[*] Navigating through PuTTY to reach DC router {router_name}...\n")
         controller.activate_window()
+        time.sleep(0.3)
         controller.send_enter(wait_after=1.0)
         out = controller.copy_terminal_output() or ""
 
-        # Step A: If currently inside another router, exit back to Director
-        if "-cli>" in out or "[admin@" in out:
-            self.append_log("[*] Currently inside router session. Exiting back to Director...\n")
-            controller.send_command("exit", wait_after=2.0)
+        # Step 1: If currently inside any router CLI, exit back to Director
+        if "-cli>" in out:
+            self.append_log("[*] Inside router CLI. Exiting to router shell...\n")
             controller.send_command("exit", wait_after=2.0)
             out = controller.copy_terminal_output() or ""
 
-        # Step B: If not in Director, SSH into Director
+        if "[admin@" in out and ": ~]" in out:
+            self.append_log("[*] Inside router shell. Exiting back to Director...\n")
+            controller.send_command("exit", wait_after=2.5)
+            out = controller.copy_terminal_output() or ""
+
+        # Step 2: If at Bastion shell, SSH to Director
         if "10.29.11.32" not in out and "VD-" not in out:
-            self.append_log(f"[*] SSH into Versa Director ({director_ip})...\n")
+            self.append_log(f"[*] At Bastion prompt. SSH to Versa Director ({director_ip})...\n")
             controller.send_command(f"ssh -l {director_user} {director_ip}", wait_after=3.0)
             controller.send_command(director_pass, wait_after=5.0, is_password=True)
+            out = controller.copy_terminal_output() or ""
 
-        # Step C: If in Director bash, enter CLI to find router IP
-        out = controller.copy_terminal_output() or ""
+        # Step 3: If in Director Linux bash, enter CLI
+        if "admin@VD-" in out or ":~$" in out:
+            self.append_log("[*] In Director shell. Entering Director CLI...\n")
+            controller.send_command("cli", wait_after=4.0)
+            controller.send_command("set paginate false", wait_after=1.5)
+            out = controller.copy_terminal_output() or ""
+        elif "Administrator@VD-" in out:
+            controller.send_command("set paginate false", wait_after=1.0)
+
+        # Step 4: Resolve target DC router IP
         target_ip = KNOWN_ROUTER_IPS.get(router_name)
+        if not target_ip:
+            self.append_log(f"[*] Resolving IP for {router_name} on Director...\n")
+            controller.send_command(f"show devices list | match {router_name}", wait_after=3.0)
+            res_out = self._wait_prompt(controller, cmd="show devices list", max_timeout=15.0)
+            m = re.search(rf"{router_name}\s+(\b10\.\d+\.\d+\.\d+\b)", res_out)
+            if m:
+                target_ip = m.group(1)
+            else:
+                m2 = re.search(r"(\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b)", res_out)
+                if m2:
+                    target_ip = m2.group(1)
 
         if not target_ip:
-            if "admin@VD-" in out or "~]$" in out or ":~$" in out:
-                controller.send_command("cli", wait_after=4.0)
-                controller.send_command("set paginate false", wait_after=1.5)
+            self.append_log(f"[!] Could not locate IP for DC {router_name}.\n")
+            return False
 
-            # Resolve router IP from Director
-            self.append_log(f"[*] Resolving IP for {router_name} on Director...\n")
-            cmd_resolve = f"show devices list | match {router_name}"
-            controller.send_command(cmd_resolve, wait_after=2.5)
-            res_out = self._wait_prompt(controller, cmd="show devices list", max_timeout=15.0)
+        self.append_log(f"[+] Management IP for {router_name}: {target_ip}\n")
 
-            ip_match = re.search(rf"{router_name}\s+(\b10\.\d+\.\d+\.\d+\b)", res_out)
-            if not ip_match:
-                # Any 10.x IP in the line
-                ip_match = re.search(r"(\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b)", res_out)
+        # Step 5: SSH into DC router directly from Director CLI
+        self.append_log(f"[*] SSH into {router_name} ({target_ip})...\n")
+        controller.send_command(f"ssh admin@{target_ip}", wait_after=4.0)
 
-            if ip_match:
-                target_ip = ip_match.group(1)
-                self.append_log(f"[+] Found Management IP for {router_name}: {target_ip}\n")
-            else:
-                self.append_log(f"[!] Could not locate IP for {router_name} on Director.\n")
-                return False
-
-            # Exit Director CLI back to Linux shell for SSH
-            controller.send_command("exit", wait_after=2.0)
-
-        # Step D: From Director Linux shell, SSH directly into DC router
-        self.append_log(f"[*] SSH from Director into {router_name} ({target_ip})...\n")
-        controller.send_command(f"ssh -o StrictHostKeyChecking=no admin@{target_ip}", wait_after=4.0)
-
-        # Check for yes/no prompt
-        ssh_out = controller.copy_terminal_output() or ""
-        if "(yes/no" in ssh_out[-300:].lower() or "fingerprint" in ssh_out[-300:].lower():
+        # Handle yes/no host key prompt if it appears
+        chk = controller.copy_terminal_output() or ""
+        if "(yes/no" in chk[-300:].lower() or "fingerprint" in chk[-300:].lower():
             controller.send_command("yes", wait_after=3.0)
 
         # Send router password
         controller.send_command(director_pass, wait_after=6.0, is_password=True)
 
-        # Enter DC router CLI
+        # Step 6: Enter router CLI
+        self.append_log(f"[*] Entering CLI on {router_name}...\n")
         controller.send_command("cli", wait_after=5.0)
         controller.send_command("set paginate false", wait_after=1.5)
 
-        # Verify CLI prompt
         cli_out = controller.copy_terminal_output() or ""
         is_ok = f"{router_name}-cli>" in cli_out or "-cli>" in cli_out
         if is_ok:
-            self.append_log(f"[✓] Successfully established CLI prompt on DC router {router_name}!\n")
+            self.append_log(f"[✓] Established CLI prompt on DC router {router_name}!\n")
         else:
             self.append_log(f"[!] Warning: Did not detect clean CLI prompt for {router_name}.\n")
         return is_ok

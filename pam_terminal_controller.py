@@ -100,12 +100,26 @@ class PamTerminalController:
         def enum_cb(hwnd, _):
             if not win32gui.IsWindow(hwnd):
                 return True
-            title = win32gui.GetWindowText(hwnd)
-            if not title:
+            try:
+                cls_name = win32gui.GetClassName(hwnd).lower()
+            except Exception:
+                cls_name = ""
+            try:
+                title = win32gui.GetWindowText(hwnd)
+            except Exception:
+                title = ""
+            tl = title.lower() if title else ""
+
+            # 1. Direct class match: PuTTY's Windows class name is always 'PuTTY' regardless of title changes
+            if "putty" in cls_name or cls_name == "putty":
+                matching.append((hwnd, title or "PuTTY Terminal"))
                 return True
-            tl = title.lower()
-            if any(kw.lower() in tl for kw in keywords):
+
+            # 2. Title matching with expanded Tata NOC keywords
+            expanded_kw = list(keywords) + ["putty", "arcon", "mcpe", "100.76", "10.29", "vd-", "ift-", "terminal", "ssh", "admin@"]
+            if any(kw.lower() in tl for kw in expanded_kw):
                 matching.append((hwnd, title))
+                return True
             return True
 
         win32gui.EnumWindows(enum_cb, None)
