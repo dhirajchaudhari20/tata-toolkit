@@ -1,8 +1,9 @@
 {
-    "latest_version": "1.4.0",
+    "latest_version": "1.5.0",
     "release_date": "2026-10-28",
     "min_compatible_version": "1.0.0",
     "changelog": [
+        "v1.5.0: Live Update Test — Containerized .pkg delivery verified on corporate network with zero proxy blocks",
         "v1.4.0: Corporate Firewall Bypass — Packaged update container (.pkg) eliminating corporate proxy .exe download blocks & file corruption",
         "v1.4.0: Atomic Installer — Safe process termination detection, rollback protection, and zero-downtime binary replacement",
         "v1.3.0: Direct Cloud Sync & Live Streaming Update Test — Real-time progress bar, transfer speed (MB/s) and ETA countdown",

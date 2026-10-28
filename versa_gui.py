@@ -3066,6 +3066,15 @@ class VersaRouterAuditGUI:
                         anchor="w"
                     ).pack(side="left", fill="x", expand=True)
 
+        # ── v1.5.0 ───────────────────────────────────────────────────────────
+        version_card(inner, "1.5.0", "2026-10-28", [
+            ("⚡  Live Update Test", [
+                "Full verification of containerized .pkg update on corporate network.",
+                "High-speed streaming download with real-time transfer rate (MB/s) and ETA.",
+                "Atomic replacement and zero-downtime application restart."
+            ])
+        ])
+
         # ── v1.4.0 ───────────────────────────────────────────────────────────
         version_card(inner, "1.4.0", "2026-10-28", [
             ("🛡️  Corporate Firewall Bypass & Containerized Updates", [
