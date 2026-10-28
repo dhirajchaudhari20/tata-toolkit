@@ -636,6 +636,34 @@ class VersaRouterAuditGUI:
             command=self._set_profile_routing_only
         ).pack(side="left")
 
+        # Row 5: Transport VR Selection for Ping Diagnostics
+        vr_frame = tk.Frame(top_frame)
+        vr_frame.grid(row=5, column=0, columnspan=9, padx=4, pady=(6, 2), sticky="w")
+
+        ttk.Label(vr_frame, text="🌐 Transport VR (Ping):", font=("Segoe UI", 9, "bold")).pack(side="left", padx=(0, 6))
+
+        self.transport_vr_var = tk.StringVar(value="Auto (from BGP)")
+        self.transport_vr_combo = ttk.Combobox(
+            vr_frame,
+            textvariable=self.transport_vr_var,
+            values=[
+                "Auto (from BGP)",
+                "TTSL-MPLS1-MB-Transport-VR",
+                "TCL-MPLS1-MB-Transport-VR",
+                "TTSL-MPLS2-MB-Transport-VR",
+                "TCL-MPLS2-MB-Transport-VR"
+            ],
+            width=28
+        )
+        self.transport_vr_combo.pack(side="left", padx=(0, 8))
+
+        ttk.Label(
+            vr_frame,
+            text="ℹ️ Auto selects Transport VR from BGP output (e.g. routing-instance: TTSL-MPLS1-MB-Transport-VR)",
+            font=("Segoe UI", 8),
+            foreground="#0369a1"
+        ).pack(side="left")
+
         self.dual_cli_var = tk.BooleanVar(value=False)
         self.background_mode_var = tk.BooleanVar(value=False)
 
@@ -1735,11 +1763,28 @@ class VersaRouterAuditGUI:
                     break
 
                 if getattr(self, 'chk_bgp_var', None) and not self.chk_bgp_var.get():
-                    self.append_log(f"[1/9] [BGP] [SKIPPED by Audit Profile]\n")
-                    provider = "TCL"
-                    transport_vrf = "transport-vrf"
-                    neighbor_ip = "N/A"
-                    source_ip = "10.116.196.210"
+                    # BGP reporting is skipped by profile
+                    # But if Ping is enabled, we MUST discover the real Transport VR from BGP output!
+                    custom_vr = ""
+                    if hasattr(self, 'transport_vr_var'):
+                        cv = self.transport_vr_var.get().strip()
+                        if cv and cv != "Auto (from BGP)":
+                            custom_vr = cv
+
+                    if custom_vr:
+                        transport_vrf = custom_vr
+                        provider = "TTSL" if "TTSL" in transport_vrf.upper() else "TCL"
+                        source_ip = "10.116.133.70" if provider == "TTSL" else "10.116.197.70"
+                        neighbor_ip = "N/A"
+                        self.append_log(f"[1/9] [BGP] [SKIPPED by Profile] | Using configured Transport VR: {transport_vrf}\n")
+                    else:
+                        self._ensure_branch_cli(controller, actual_router)
+                        self.append_log(f"[1/9] [BGP] [Profile: Ping Mode] Selecting Transport VR from BGP output...\n")
+                        controller.send_command("show bgp neighbor brief", wait_after=1.0)
+                        bgp_output = self._wait_for_terminal_prompt(controller, cmd="show bgp neighbor brief", max_timeout=15.0)
+                        provider, transport_vrf, neighbor_ip, source_ip, bgp_uptime, bgp_state, ctrl_bgp = self._parse_bgp_info(bgp_output)
+                        self.append_log(f"    - [✓ Selected from BGP]: Routing Instance = {transport_vrf} | Provider = {provider} | Source IP = {source_ip}\n")
+
                     bgp_uptime = "N/A"
                     bgp_state = "Skipped"
                     ctrl_bgp = "N/A (Skipped)"
@@ -1868,8 +1913,10 @@ class VersaRouterAuditGUI:
                         p1_verdict = "SKIPPED"
                     else:
                         self._ensure_branch_cli(controller, actual_router)
-                        self.append_log(f"[{step_diag_num}/{total_diag_steps}] [PING] {target_site} - {c1_name} ({site_mpls1_ip})...\n")
-                        cmd_p1 = f"ping {site_mpls1_ip} source {source_ip} routing-instance {transport_vrf} rapid enable count {self.ping_count_var.get()} packet-size 1472 df-bit enable"
+                        p1_vrf = getattr(self, "current_transport_vrfs", {}).get("mpls1", transport_vrf)
+                        self.append_log(f"[{step_diag_num}/{total_diag_steps}] [PING] {target_site} - {c1_name} ({site_mpls1_ip}) [Routing Instance: {p1_vrf}]...\n")
+                        p1_vrf = getattr(self, "current_transport_vrfs", {}).get("mpls1", transport_vrf)
+                        cmd_p1 = f"ping {site_mpls1_ip} source {source_ip} routing-instance {p1_vrf} rapid enable count {self.ping_count_var.get()} packet-size 1472 df-bit enable"
                         controller.send_command(cmd_p1, wait_after=1.5)
                         p1_output = self._wait_for_terminal_prompt(controller, cmd="ping", max_timeout=35.0)
 
@@ -1901,7 +1948,7 @@ class VersaRouterAuditGUI:
                         "VRRP VIP": vrrp_vip,
                         "Packet Loss (%)": p1_loss,
                         "Avg RTT (ms)": p1_rtt,
-                        "Transport VRF": transport_vrf,
+                        "Transport VRF": p1_vrf,
                         "SLA Verdict": p1_verdict,
                         "Evidence Screenshot": ss_p1,
                         "Tested At": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1924,8 +1971,10 @@ class VersaRouterAuditGUI:
                         p2_verdict = "SKIPPED"
                     else:
                         self._ensure_branch_cli(controller, actual_router)
-                        self.append_log(f"[{step_diag_num}/{total_diag_steps}] [PING] {target_site} - {c2_name} ({site_mpls2_ip})...\n")
-                        cmd_p2 = f"ping {site_mpls2_ip} source {source_ip} routing-instance {transport_vrf} rapid enable count {self.ping_count_var.get()} packet-size 1472 df-bit enable"
+                        p2_vrf = getattr(self, "current_transport_vrfs", {}).get("mpls2", transport_vrf)
+                        self.append_log(f"[{step_diag_num}/{total_diag_steps}] [PING] {target_site} - {c2_name} ({site_mpls2_ip}) [Routing Instance: {p2_vrf}]...\n")
+                        p2_vrf = getattr(self, "current_transport_vrfs", {}).get("mpls2", transport_vrf)
+                        cmd_p2 = f"ping {site_mpls2_ip} source {source_ip} routing-instance {p2_vrf} rapid enable count {self.ping_count_var.get()} packet-size 1472 df-bit enable"
                         controller.send_command(cmd_p2, wait_after=1.5)
                         p2_output = self._wait_for_terminal_prompt(controller, cmd="ping", max_timeout=35.0)
 
@@ -1955,7 +2004,7 @@ class VersaRouterAuditGUI:
                         "VRRP VIP": vrrp_vip,
                         "Packet Loss (%)": p2_loss,
                         "Avg RTT (ms)": p2_rtt,
-                        "Transport VRF": transport_vrf,
+                        "Transport VRF": p2_vrf,
                         "SLA Verdict": p2_verdict,
                         "Evidence Screenshot": ss_p2,
                         "Tested At": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2069,8 +2118,9 @@ class VersaRouterAuditGUI:
                         if self.stop_event.is_set():
                             break
 
+                        c_vrf = getattr(self, "current_transport_vrfs", {}).get("mpls2" if "mpls2" in c_name.lower() else "mpls1", transport_vrf)
                         cmd = (
-                            f"ping {dest_ip} source {source_ip} routing-instance {transport_vrf} "
+                            f"ping {dest_ip} source {source_ip} routing-instance {c_vrf} "
                             f"rapid enable count {self.ping_count_var.get()} packet-size 1472 df-bit enable"
                         )
                         ping_out = self.shell.send_and_wait(cmd, expected_patterns=[r"admin@[A-Za-z0-9_-]+-cli>"], timeout=45)
@@ -2095,7 +2145,7 @@ class VersaRouterAuditGUI:
                             "VRRP VIP": "N/A",
                             "Packet Loss (%)": stats["Packet Loss (%)"],
                             "Avg RTT (ms)": stats["Avg RTT (ms)"],
-                            "Transport VRF": transport_vrf,
+                            "Transport VRF": c_vrf,
                             "SLA Verdict": verdict,
                             "Tested At": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         }
@@ -2211,20 +2261,76 @@ class VersaRouterAuditGUI:
         bgp_idx = output_str.rfind("show bgp neighbor")
         bgp_text = output_str[bgp_idx:] if bgp_idx != -1 else output_str
 
-        # Match Transport VRF name
-        vrf_match = re.search(r"routing-instance:\s+([A-Za-z0-9_-]*(?:TCL|TTSL)[A-Za-z0-9_-]*Transport-VR)", bgp_text, re.IGNORECASE)
-        if not vrf_match:
-            vrf_match = re.search(r"routing-instance:\s+([A-Za-z0-9_-]*Transport-VR)", bgp_text, re.IGNORECASE)
+        # Extract all routing-instances in BGP output
+        all_vrfs = re.findall(r"routing-instance:\s*([A-Za-z0-9_-]+)", bgp_text, re.IGNORECASE)
 
-        if vrf_match:
-            transport_vrf = vrf_match.group(1).strip()
-            # Detect provider directly from the routing instance name
+        # Filter for Transport VRs (instances containing 'Transport' and NOT 'Control')
+        transport_vrfs = [
+            v.strip() for v in all_vrfs 
+            if "transport" in v.lower() and "control" not in v.lower()
+        ]
+
+        # Fallback: any instance that does not contain 'control' or 'default'
+        if not transport_vrfs:
+            transport_vrfs = [
+                v.strip() for v in all_vrfs 
+                if "control" not in v.lower() and "default" not in v.lower()
+            ]
+
+        # Regex fallback if list comprehension found nothing
+        if not transport_vrfs:
+            vrf_match = re.search(r"routing-instance:\s+([A-Za-z0-9_-]*(?:TCL|TTSL)[A-Za-z0-9_-]*Transport-VR)", bgp_text, re.IGNORECASE)
+            if not vrf_match:
+                vrf_match = re.search(r"routing-instance:\s+([A-Za-z0-9_-]*Transport-VR)", bgp_text, re.IGNORECASE)
+            if vrf_match:
+                transport_vrfs = [vrf_match.group(1).strip()]
+
+        # Check for user GUI manual override
+        custom_vr = ""
+        if hasattr(self, "transport_vr_var"):
+            try:
+                cv = self.transport_vr_var.get().strip()
+                if cv and cv != "Auto (from BGP)":
+                    custom_vr = cv
+            except Exception:
+                pass
+
+        if custom_vr:
+            transport_vrf = custom_vr
             provider = "TTSL" if "TTSL" in transport_vrf.upper() else "TCL"
+            vrf_mpls1 = custom_vr
+            vrf_mpls2 = custom_vr
+        elif transport_vrfs:
+            transport_vrf = transport_vrfs[0]
+            provider = "TTSL" if "TTSL" in transport_vrf.upper() else "TCL"
+            vrf_mpls1 = next((v for v in transport_vrfs if "mpls1" in v.lower()), transport_vrf)
+            vrf_mpls2 = next((v for v in transport_vrfs if "mpls2" in v.lower()), transport_vrf)
         else:
             provider = "TTSL" if "TTSL" in bgp_text else "TCL"
             transport_vrf = "TTSL-MPLS1-MB-Transport-VR" if provider == "TTSL" else "TCL-MPLS1-MB-Transport-VR"
+            vrf_mpls1 = transport_vrf
+            vrf_mpls2 = transport_vrf
 
-        vrf_section = bgp_text.split(f"routing-instance: {transport_vrf}")[-1] if f"routing-instance: {transport_vrf}" in bgp_text else bgp_text
+        self.current_transport_vrfs = {
+            "primary": transport_vrf,
+            "mpls1": vrf_mpls1,
+            "mpls2": vrf_mpls2
+        }
+
+        # Update combo dropdown values dynamically if new VR discovered
+        if transport_vrfs and hasattr(self, 'transport_vr_combo'):
+            try:
+                curr_vals = list(self.transport_vr_combo['values'])
+                for v in transport_vrfs:
+                    if v not in curr_vals:
+                        curr_vals.append(v)
+                self.transport_vr_combo['values'] = curr_vals
+            except Exception:
+                pass
+
+        # Robust section split using regex on the chosen transport VR
+        split_match = re.split(r"routing-instance:\s*" + re.escape(transport_vrf), bgp_text, flags=re.IGNORECASE)
+        vrf_section = split_match[-1] if len(split_match) > 1 else bgp_text
 
         # Stop at next [ok], prompt, or next routing instance
         for stop_token in ["[ok]", "admin@", "routing-instance:"]:
