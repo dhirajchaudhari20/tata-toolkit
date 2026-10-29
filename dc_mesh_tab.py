@@ -25,6 +25,7 @@ import time
 import re
 import os
 import sys
+import ctypes
 from datetime import datetime
 
 try:
@@ -32,6 +33,11 @@ try:
     HAS_PAM = True
 except ImportError:
     HAS_PAM = False
+
+try:
+    from sleep_preventer import sleep_preventer
+except ImportError:
+    sleep_preventer = None
 
 try:
     import openpyxl
@@ -145,62 +151,39 @@ def parse_dc_transport_vrs(bgp_text):
 
 def parse_cpe_sdwan_circuits(sdwan_output):
     """
-    Parses Versa VOS sd-wan appliance output to extract WAN circuit IPs.
-    Supports both command formats:
-      - show orgs org MB-NET appliances appliance <CPE> sd-wan
-      - show orgs org MB-NET sd-wan wan-edges wan-edge <CPE>
-
-    Looks for the 'NAT Status:' table:
-      Index  IPFamily  Circuit        NAT    PublicIP         PrivateIP        DataPathIP
-      1      ipv4      TCL-MPLS1-MB   false  10.116.196.58    10.116.196.58    10.116.196.58
-      ...
-
-    - If NAT STATUS == true  → uses PUBLIC IP
-    - If NAT STATUS == false → uses Public IP (or DataPath IP as fallback)
+    Parses 'show orgs org MB-NET sd-wan detail <CPE>' output from the DC router.
+    Extracts target WAN IPs from the 'NAT Status:' table:
+    - If NAT STATUS == true -> uses PUBLIC IP
+    - If NAT STATUS == false -> uses DataPath IP (or Public IP)
     Returns list of dicts: [ {'circuit': ..., 'nat_status': bool, 'target_ip': ...}, ... ]
     """
     circuits = []
     if not sdwan_output:
         return circuits
 
-    # Bail out early if command returned a syntax error
-    lo = sdwan_output.lower()
-    if "syntax error" in lo or "unknown argument" in lo:
-        return circuits
-
     in_nat = False
     for line in sdwan_output.splitlines():
         line_s = line.strip()
-
-        # Start capturing after "NAT Status:" header line
-        if "NAT Status:" in line_s or "nat-status" in line_s.lower():
+        if "NAT Status:" in line_s:
             in_nat = True
             continue
-
         if in_nat:
-            # Stop at prompt, [ok] marker, or separator line
             if line_s.startswith("[ok]") or line_s.startswith("admin@") or "===" in line_s:
                 break
-            # Skip blank lines and header rows
-            if not line_s or line_s.lower().startswith("index") or line_s.startswith("-"):
-                continue
-
             parts = line_s.split()
-            # Expected columns: Index IPFamily Circuit NATStatus PublicIP [PrivateIP DataPathIP ...]
-            # Minimum we need: Index ipv4 Circuit NAT PublicIP
             if len(parts) >= 5 and parts[1].lower() == "ipv4":
-                circuit_name  = parts[2].strip()
+                circuit_name = parts[2].strip()
                 nat_status_str = parts[3].lower()
-                is_nat        = (nat_status_str == "true")
-                public_ip     = parts[4].strip() if len(parts) >= 5 else ""
-                datapath_ip   = parts[6].strip() if len(parts) >= 7 else public_ip
-                target_ip     = public_ip if is_nat else (public_ip or datapath_ip)
+                is_nat = (nat_status_str == "true")
+                public_ip = parts[4].strip() if len(parts) >= 5 else ""
+                datapath_ip = parts[6].strip() if len(parts) >= 7 else public_ip
+                target_ip = public_ip if is_nat else (public_ip or datapath_ip)
 
                 if re.match(r"^\d+\.\d+\.\d+\.\d+$", target_ip):
                     circuits.append({
-                        "circuit":    circuit_name,
+                        "circuit": circuit_name,
                         "nat_status": is_nat,
-                        "target_ip":  target_ip
+                        "target_ip": target_ip
                     })
 
     return circuits
@@ -229,6 +212,9 @@ class DCMeshPingFrame(ttk.Frame):
 
         self._build_ui()
         self._load_saved_lists()
+
+        if sleep_preventer:
+            sleep_preventer.register_callback(self._on_anti_sleep_state_changed)
 
     # ──────────────────────────────────────────────────────────────────────────
     # UI Layout Construction (Strict Pack Order to Prevent Overflow)
@@ -417,6 +403,24 @@ class DCMeshPingFrame(ttk.Frame):
             command=self.clear_results
         )
         self.clear_btn.pack(side="left")
+
+        # Anti-Sleep Keep-Awake Indicator & Toggle
+        is_awake = sleep_preventer.is_active() if sleep_preventer else False
+        self.anti_sleep_btn = tk.Button(
+            btn_bar,
+            text="☕ Anti-Sleep: ON" if is_awake else "☕ Anti-Sleep: OFF",
+            font=("Segoe UI", 9, "bold"),
+            bg="#0f766e" if is_awake else "#475569",
+            fg="white",
+            activebackground="#115e59",
+            activeforeground="white",
+            relief="flat",
+            cursor="hand2",
+            padx=12,
+            pady=6,
+            command=self._toggle_anti_sleep
+        )
+        self.anti_sleep_btn.pack(side="right", padx=(4, 0))
 
         # ── 4. Middle Split Workspace (PACK LAST, TAKES ALL REMAINING HEIGHT) ──
         paned = ttk.PanedWindow(self, orient="horizontal")
@@ -817,8 +821,26 @@ class DCMeshPingFrame(ttk.Frame):
         self.eta_var.set("⏱️ Time Left: --:--")
 
     # ──────────────────────────────────────────────────────────────────────────
-    # Execution Lifecycle (Start, Pause, Stop)
+    # Execution Lifecycle (Start, Pause, Stop) & Anti-Sleep
     # ──────────────────────────────────────────────────────────────────────────
+    def _toggle_anti_sleep(self):
+        if sleep_preventer:
+            new_state = sleep_preventer.toggle()
+            status = "Activated (System will stay awake)" if new_state else "Deactivated (Normal power mode)"
+            self.append_log(f"[☕] Anti-Sleep {status}.\n")
+
+    def _on_anti_sleep_state_changed(self, is_active):
+        def _apply():
+            try:
+                if hasattr(self, 'anti_sleep_btn'):
+                    if is_active:
+                        self.anti_sleep_btn.config(text="☕ Anti-Sleep: ON", bg="#0f766e")
+                    else:
+                        self.anti_sleep_btn.config(text="☕ Anti-Sleep: OFF", bg="#64748b")
+            except Exception:
+                pass
+        self.root.after(0, _apply)
+
     def start_audit(self):
         if self.is_running:
             return
@@ -839,6 +861,10 @@ class DCMeshPingFrame(ttk.Frame):
         self.is_running = True
         self.stop_event.clear()
         self.pause_event.set()
+
+        if sleep_preventer:
+            sleep_preventer.start("DC Mesh Ping Audit")
+            self.append_log("[☕ Anti-Sleep Active]: Windows sleep and screen timeout prevented during audit.\n")
 
         self.start_btn.config(state="disabled")
         self.pause_btn.config(state="normal", text="⏸  Pause", bg="#d97706")
@@ -874,6 +900,8 @@ class DCMeshPingFrame(ttk.Frame):
             return
         self.stop_event.set()
         self.pause_event.set()
+        if sleep_preventer:
+            sleep_preventer.stop()
         self.status_var.set("Stopping mesh audit gracefully...")
         self.append_log("[!] STOP signal sent. Gracefully halting after current operation...\n")
 
@@ -985,28 +1013,11 @@ class DCMeshPingFrame(ttk.Frame):
                     self.eta_var.set(f"⏱️ Time Left: {eta_m:02d}:{eta_s:02d}")
 
                     self.append_log(f"\n  [CPE {cpe_idx}/{len(cpes)}] Querying circuits for {cpe_name} on {dc_name}...\n")
-
-                    # Correct Versa VOS command: show orgs org <ORG> appliances appliance <CPE> sd-wan
-                    # This produces the NAT Status table with WAN circuit IPs
-                    cmd_sdwan = f"show orgs org MB-NET appliances appliance {cpe_name} sd-wan"
-                    self.append_log(f"  [CMD] {cmd_sdwan}\n")
-                    controller.send_command(cmd_sdwan, wait_after=2.0)
-                    sdwan_out = self._wait_prompt(controller, cmd="sd-wan", max_timeout=40.0)
+                    cmd_sdwan = f"show orgs org MB-NET sd-wan detail {cpe_name}"
+                    controller.send_command(cmd_sdwan, wait_after=1.5)
+                    sdwan_out = self._wait_prompt(controller, cmd=cmd_sdwan, max_timeout=35.0)
 
                     cpe_circuits = parse_cpe_sdwan_circuits(sdwan_out)
-
-                    # Fallback: try alternate command format if first gave no results or syntax error
-                    if not cpe_circuits or "syntax error" in sdwan_out.lower() or "unknown argument" in sdwan_out.lower():
-                        self.append_log(f"  [~] Primary command gave no results, trying alternate for {cpe_name}...\n")
-                        cmd_sdwan2 = f"show orgs org MB-NET sd-wan wan-edges wan-edge {cpe_name}"
-                        self.append_log(f"  [CMD] {cmd_sdwan2}\n")
-                        controller.send_command(cmd_sdwan2, wait_after=2.0)
-                        sdwan_out2 = self._wait_prompt(controller, cmd="wan-edge", max_timeout=40.0)
-                        cpe_circuits2 = parse_cpe_sdwan_circuits(sdwan_out2)
-                        if cpe_circuits2:
-                            cpe_circuits = cpe_circuits2
-                            sdwan_out = sdwan_out2
-
                     if not cpe_circuits:
                         self.append_log(f"  [!] No circuits found in NAT Status for {cpe_name}.\n")
                         self._update_matrix_cell(cpe_name, "N/A", dc_name, "No Circuits", "error")
@@ -1153,6 +1164,9 @@ class DCMeshPingFrame(ttk.Frame):
 
     def _finish_audit(self, success=True):
         self.is_running = False
+        if sleep_preventer:
+            sleep_preventer.stop()
+            self.append_log("[☕ Anti-Sleep Released]: Normal Windows power settings restored.\n")
         self.root.after(0, lambda: self.start_btn.config(state="normal"))
         self.root.after(0, lambda: self.pause_btn.config(state="disabled", text="⏸  Pause", bg="#d97706"))
         self.root.after(0, lambda: self.stop_btn.config(state="disabled"))
@@ -1253,29 +1267,18 @@ class DCMeshPingFrame(ttk.Frame):
         return is_ok
 
     def _wait_prompt(self, controller, cmd=None, max_timeout=35.0, check_interval=0.4):
-        """Waits for terminal command output to stabilize.
-        Returns as soon as the CLI prompt (-cli>) or [ok]/[error] marker appears at the end.
-        """
+        """Waits for terminal command output to stabilize."""
         start_t = time.time()
-        time.sleep(0.5)
+        time.sleep(0.4)
         while time.time() - start_t < max_timeout:
             if self.stop_event.is_set():
                 break
             self._check_pause()
             time.sleep(check_interval)
             out = controller.copy_terminal_output() or ""
-            lines = [l.strip() for l in out.strip().splitlines() if l.strip()]
-            if not lines:
-                continue
-            last_lines = lines[-3:]
-            # Return as soon as we see a CLI prompt or [ok]/[error] at end of output
-            done = any(
-                l.endswith("-cli>") or "[ok]" in l or "[error]" in l
-                for l in last_lines
-            )
-            if done:
-                # Also require the command keyword to appear (to avoid returning on previous output)
-                if cmd is None or cmd in out:
+            if cmd and cmd in out:
+                lines = [l.strip() for l in out.strip().splitlines() if l.strip()]
+                if lines and any(l.endswith("-cli>") or "[ok]" in l for l in lines[-2:]):
                     return out
         return controller.copy_terminal_output() or ""
 

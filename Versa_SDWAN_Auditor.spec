@@ -13,6 +13,7 @@ a = Analysis(
         ('app_icon.ico', '.')
     ],
     hiddenimports=[
+        'sleep_preventer',
         'dc_mesh_tab',
         'cid_checker_tab',
         'history_tab',

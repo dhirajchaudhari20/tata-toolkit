@@ -69,6 +69,11 @@ except ImportError:
     HAS_DESKTOP_AUTO = False
 
 
+try:
+    from sleep_preventer import sleep_preventer
+except Exception:
+    sleep_preventer = None
+
 def get_asset_path(filename):
     """Resolves asset path for both local development and PyInstaller frozen exe."""
     import sys
@@ -245,6 +250,9 @@ class VersaRouterAuditGUI:
         self._set_window_icon()
 
         self._setup_ui()
+
+        if sleep_preventer:
+            sleep_preventer.register_callback(self._on_anti_sleep_state_changed)
 
         # Offline Update check in background thread on startup
         threading.Thread(target=self._startup_update_check, daemon=True).start()
@@ -835,6 +843,24 @@ class VersaRouterAuditGUI:
         )
         self.clear_btn.pack(side="right")
 
+        # Anti-Sleep Keep-Awake Toggle Button
+        is_awake = sleep_preventer.is_active() if sleep_preventer else False
+        self.anti_sleep_btn = tk.Button(
+            btn_frame,
+            text="☕ Anti-Sleep: ON" if is_awake else "☕ Anti-Sleep: OFF",
+            font=("Segoe UI", 9, "bold"),
+            bg="#0f766e" if is_awake else "#64748b",
+            fg="white",
+            activebackground="#115e59",
+            activeforeground="white",
+            relief="flat",
+            cursor="hand2",
+            padx=12,
+            pady=6,
+            command=self._toggle_anti_sleep
+        )
+        self.anti_sleep_btn.pack(side="right", padx=(0, 8))
+
         # Main Workspace - Split Pane (Packs to fill whatever middle space remains)
         paned = ttk.PanedWindow(self.tab_router, orient="horizontal")
         paned.pack(side="top", fill="both", expand=True, padx=6, pady=2)
@@ -1037,6 +1063,24 @@ class VersaRouterAuditGUI:
         self.log_text.insert(tk.END, text)
         self.log_text.see(tk.END)
 
+    def _toggle_anti_sleep(self):
+        if sleep_preventer:
+            new_state = sleep_preventer.toggle()
+            status = "Activated (System will stay awake)" if new_state else "Deactivated (Normal power mode)"
+            self.append_log(f"[☕] Anti-Sleep {status}.\n")
+
+    def _on_anti_sleep_state_changed(self, is_active):
+        def _apply():
+            try:
+                if hasattr(self, 'anti_sleep_btn'):
+                    if is_active:
+                        self.anti_sleep_btn.config(text="☕ Anti-Sleep: ON", bg="#0f766e")
+                    else:
+                        self.anti_sleep_btn.config(text="☕ Anti-Sleep: OFF", bg="#64748b")
+            except Exception:
+                pass
+        self.root.after(0, _apply)
+
     def clear_all(self):
         if not self.is_running:
             for item in self.tree.get_children():
@@ -1050,6 +1094,8 @@ class VersaRouterAuditGUI:
         if self.is_running:
             self.stop_event.set()
             self.pause_event.set()  # Release pause so thread can exit immediately
+            if sleep_preventer:
+                sleep_preventer.stop()
             self.status_var.set("Stopping audit gracefully... finishing current test.")
             self.stop_btn.config(state="disabled")
             if hasattr(self, 'pause_btn'):
@@ -1470,6 +1516,11 @@ class VersaRouterAuditGUI:
         self.is_running = True
         self.stop_event.clear()
         self.pause_event.set()
+
+        if sleep_preventer:
+            sleep_preventer.start("Router Audit")
+            self.append_log("[☕ Anti-Sleep Active]: Windows sleep and screen timeout prevented during audit.\n")
+
         self.audit_results = []
         for item in self.tree.get_children():
             self.tree.delete(item)
@@ -2657,6 +2708,9 @@ class VersaRouterAuditGUI:
 
     def _on_audit_finished(self):
         self.is_running = False
+        if sleep_preventer:
+            sleep_preventer.stop()
+            self.append_log("[☕ Anti-Sleep Released]: Normal Windows power settings restored.\n")
         self.pause_event.set()
         self.start_btn.config(state="normal")
         if hasattr(self, 'pause_btn'):
