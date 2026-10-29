@@ -145,39 +145,62 @@ def parse_dc_transport_vrs(bgp_text):
 
 def parse_cpe_sdwan_circuits(sdwan_output):
     """
-    Parses 'show orgs org MB-NET sd-wan detail <CPE>' output from the DC router.
-    Extracts target WAN IPs from the 'NAT Status:' table:
-    - If NAT STATUS == true -> uses PUBLIC IP
-    - If NAT STATUS == false -> uses DataPath IP (or Public IP)
+    Parses Versa VOS sd-wan appliance output to extract WAN circuit IPs.
+    Supports both command formats:
+      - show orgs org MB-NET appliances appliance <CPE> sd-wan
+      - show orgs org MB-NET sd-wan wan-edges wan-edge <CPE>
+
+    Looks for the 'NAT Status:' table:
+      Index  IPFamily  Circuit        NAT    PublicIP         PrivateIP        DataPathIP
+      1      ipv4      TCL-MPLS1-MB   false  10.116.196.58    10.116.196.58    10.116.196.58
+      ...
+
+    - If NAT STATUS == true  → uses PUBLIC IP
+    - If NAT STATUS == false → uses Public IP (or DataPath IP as fallback)
     Returns list of dicts: [ {'circuit': ..., 'nat_status': bool, 'target_ip': ...}, ... ]
     """
     circuits = []
     if not sdwan_output:
         return circuits
 
+    # Bail out early if command returned a syntax error
+    lo = sdwan_output.lower()
+    if "syntax error" in lo or "unknown argument" in lo:
+        return circuits
+
     in_nat = False
     for line in sdwan_output.splitlines():
         line_s = line.strip()
-        if "NAT Status:" in line_s:
+
+        # Start capturing after "NAT Status:" header line
+        if "NAT Status:" in line_s or "nat-status" in line_s.lower():
             in_nat = True
             continue
+
         if in_nat:
+            # Stop at prompt, [ok] marker, or separator line
             if line_s.startswith("[ok]") or line_s.startswith("admin@") or "===" in line_s:
                 break
+            # Skip blank lines and header rows
+            if not line_s or line_s.lower().startswith("index") or line_s.startswith("-"):
+                continue
+
             parts = line_s.split()
+            # Expected columns: Index IPFamily Circuit NATStatus PublicIP [PrivateIP DataPathIP ...]
+            # Minimum we need: Index ipv4 Circuit NAT PublicIP
             if len(parts) >= 5 and parts[1].lower() == "ipv4":
-                circuit_name = parts[2].strip()
+                circuit_name  = parts[2].strip()
                 nat_status_str = parts[3].lower()
-                is_nat = (nat_status_str == "true")
-                public_ip = parts[4].strip() if len(parts) >= 5 else ""
-                datapath_ip = parts[6].strip() if len(parts) >= 7 else public_ip
-                target_ip = public_ip if is_nat else (public_ip or datapath_ip)
+                is_nat        = (nat_status_str == "true")
+                public_ip     = parts[4].strip() if len(parts) >= 5 else ""
+                datapath_ip   = parts[6].strip() if len(parts) >= 7 else public_ip
+                target_ip     = public_ip if is_nat else (public_ip or datapath_ip)
 
                 if re.match(r"^\d+\.\d+\.\d+\.\d+$", target_ip):
                     circuits.append({
-                        "circuit": circuit_name,
+                        "circuit":    circuit_name,
                         "nat_status": is_nat,
-                        "target_ip": target_ip
+                        "target_ip":  target_ip
                     })
 
     return circuits
@@ -962,11 +985,28 @@ class DCMeshPingFrame(ttk.Frame):
                     self.eta_var.set(f"⏱️ Time Left: {eta_m:02d}:{eta_s:02d}")
 
                     self.append_log(f"\n  [CPE {cpe_idx}/{len(cpes)}] Querying circuits for {cpe_name} on {dc_name}...\n")
-                    cmd_sdwan = f"show orgs org MB-NET sd-wan detail {cpe_name}"
-                    controller.send_command(cmd_sdwan, wait_after=1.5)
-                    sdwan_out = self._wait_prompt(controller, cmd=cmd_sdwan, max_timeout=35.0)
+
+                    # Correct Versa VOS command: show orgs org <ORG> appliances appliance <CPE> sd-wan
+                    # This produces the NAT Status table with WAN circuit IPs
+                    cmd_sdwan = f"show orgs org MB-NET appliances appliance {cpe_name} sd-wan"
+                    self.append_log(f"  [CMD] {cmd_sdwan}\n")
+                    controller.send_command(cmd_sdwan, wait_after=2.0)
+                    sdwan_out = self._wait_prompt(controller, cmd="sd-wan", max_timeout=40.0)
 
                     cpe_circuits = parse_cpe_sdwan_circuits(sdwan_out)
+
+                    # Fallback: try alternate command format if first gave no results or syntax error
+                    if not cpe_circuits or "syntax error" in sdwan_out.lower() or "unknown argument" in sdwan_out.lower():
+                        self.append_log(f"  [~] Primary command gave no results, trying alternate for {cpe_name}...\n")
+                        cmd_sdwan2 = f"show orgs org MB-NET sd-wan wan-edges wan-edge {cpe_name}"
+                        self.append_log(f"  [CMD] {cmd_sdwan2}\n")
+                        controller.send_command(cmd_sdwan2, wait_after=2.0)
+                        sdwan_out2 = self._wait_prompt(controller, cmd="wan-edge", max_timeout=40.0)
+                        cpe_circuits2 = parse_cpe_sdwan_circuits(sdwan_out2)
+                        if cpe_circuits2:
+                            cpe_circuits = cpe_circuits2
+                            sdwan_out = sdwan_out2
+
                     if not cpe_circuits:
                         self.append_log(f"  [!] No circuits found in NAT Status for {cpe_name}.\n")
                         self._update_matrix_cell(cpe_name, "N/A", dc_name, "No Circuits", "error")
@@ -1213,18 +1253,29 @@ class DCMeshPingFrame(ttk.Frame):
         return is_ok
 
     def _wait_prompt(self, controller, cmd=None, max_timeout=35.0, check_interval=0.4):
-        """Waits for terminal command output to stabilize."""
+        """Waits for terminal command output to stabilize.
+        Returns as soon as the CLI prompt (-cli>) or [ok]/[error] marker appears at the end.
+        """
         start_t = time.time()
-        time.sleep(0.4)
+        time.sleep(0.5)
         while time.time() - start_t < max_timeout:
             if self.stop_event.is_set():
                 break
             self._check_pause()
             time.sleep(check_interval)
             out = controller.copy_terminal_output() or ""
-            if cmd and cmd in out:
-                lines = [l.strip() for l in out.strip().splitlines() if l.strip()]
-                if lines and any(l.endswith("-cli>") or "[ok]" in l for l in lines[-2:]):
+            lines = [l.strip() for l in out.strip().splitlines() if l.strip()]
+            if not lines:
+                continue
+            last_lines = lines[-3:]
+            # Return as soon as we see a CLI prompt or [ok]/[error] at end of output
+            done = any(
+                l.endswith("-cli>") or "[ok]" in l or "[error]" in l
+                for l in last_lines
+            )
+            if done:
+                # Also require the command keyword to appear (to avoid returning on previous output)
+                if cmd is None or cmd in out:
                     return out
         return controller.copy_terminal_output() or ""
 
