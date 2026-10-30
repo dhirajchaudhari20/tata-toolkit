@@ -421,14 +421,25 @@ class VersaRouterAuditGUI:
         self.main_notebook.pack(side="top", fill="both", expand=True, padx=12, pady=(4, 2))
 
         self.tab_router = ttk.Frame(self.main_notebook)
+        self.tab_ticket = ttk.Frame(self.main_notebook)
         self.tab_cid = ttk.Frame(self.main_notebook)
         self.tab_dc_mesh = ttk.Frame(self.main_notebook)
         self.tab_history = ttk.Frame(self.main_notebook)
 
         self.main_notebook.add(self.tab_router, text="  📡 Versa Router Health Auditor  ")
+        self.main_notebook.add(self.tab_ticket, text="  🎫 Ticket & Alert Diagnostics  ")
         self.main_notebook.add(self.tab_cid, text="  ⚡ TTBS CID Punchability Checker  ")
         self.main_notebook.add(self.tab_dc_mesh, text="  🏢 DC to Branch Mesh Ping  ")
         self.main_notebook.add(self.tab_history, text="  🕒 Audit History & Past Records  ")
+
+        # Initialize Tab 2: Ticket & Alert Auto-Diagnostics
+        try:
+            from ticket_analyzer_tab import TicketAnalyzerFrame
+            self.ticket_frame = TicketAnalyzerFrame(self.tab_ticket, root=self.root, parent_gui=self)
+            self.ticket_frame.pack(fill="both", expand=True)
+        except Exception as e:
+            err_box = ttk.Label(self.tab_ticket, text=f"Could not load Ticket & Alert Diagnostics:\n{e}", foreground="red", padding=20)
+            err_box.pack()
 
         # Initialize Tab 2: CID Punchability Checker
         try:
