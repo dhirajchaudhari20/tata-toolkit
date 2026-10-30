@@ -435,16 +435,25 @@ Link Type :- TCL-MPLS1-MB"""
                 self._finish_flt(success=False, error_msg=f"Could not establish CLI on {target_hostname}")
                 return
 
-            # Command 1: Port Identification
+            # Command 1: SD-WAN SLA Monitor Status Down ("Make it First Run")
+            # show orgs org <ORG>-NET sd-wan sla-monitor status-down | tab | match <circuit>
+            cmd_sla = f"show orgs org {org}-NET sd-wan sla-monitor status-down | tab | match {circuit}"
+            self.append_log(f"\n[*] [1/6] SD-WAN SLA Monitor Down (First Run): {cmd_sla}\n")
+            controller.send_command(cmd_sla, wait_after=1.5)
+            out_sla = self._wait_prompt(controller, cmd=cmd_sla, max_timeout=25.0)
+            self.command_outputs["sla_down"] = self._clean_cli_output(out_sla, cmd_sla)
+            self.append_log(f"[✓] Captured SLA Monitor Status-Down.\n")
+
+            # Command 2: Port Identification
             # show interfaces brief | match <circuit> | except 172
             cmd1 = f"show interfaces brief | match {circuit} | except 172"
-            self.append_log(f"\n[*] [1/6] Port Identification: {cmd1}\n")
+            self.append_log(f"\n[*] [2/6] Port Identification: {cmd1}\n")
             controller.send_command(cmd1, wait_after=1.5)
             out1 = self._wait_prompt(controller, cmd=cmd1, max_timeout=20.0)
             self.command_outputs["port_ident"] = self._clean_cli_output(out1, cmd1)
             self.append_log(f"[✓] Captured Port Identification.\n")
 
-            # Auto-extract Transport VR and VNI from Command 1 output
+            # Auto-extract Transport VR and VNI from Port output
             m_vr = re.search(r"\b([A-Za-z0-9_-]+-Transport-VR)\b", self.command_outputs["port_ident"])
             if m_vr:
                 vr = m_vr.group(1).strip()
@@ -457,16 +466,16 @@ Link Type :- TCL-MPLS1-MB"""
                 self.var_port_vni.set(vni_found)
                 self.append_log(f"[✓] Auto-detected Port Interface: {vni_found}\n")
 
-            # Command 2: VR BGP Status (Neighbor and Uptime)
+            # Command 3: VR BGP Status (Neighbor and Uptime)
             # show bgp neighbor brief <VR>
             cmd2 = f"show bgp neighbor brief {vr}"
-            self.append_log(f"\n[*] [2/6] Specific VR BGP Status: {cmd2}\n")
+            self.append_log(f"\n[*] [3/6] Specific VR BGP Status: {cmd2}\n")
             controller.send_command(cmd2, wait_after=1.5)
             out2 = self._wait_prompt(controller, cmd=cmd2, max_timeout=20.0)
             self.command_outputs["bgp_vr"] = self._clean_cli_output(out2, cmd2)
             self.append_log(f"[✓] Captured VR BGP Status.\n")
 
-            # Extract Peer IP from Command 2 output if not entered or to guarantee accuracy
+            # Extract Peer IP from BGP output if not entered or to guarantee accuracy
             for l in self.command_outputs["bgp_vr"].splitlines():
                 parts = l.strip().split()
                 if parts and re.match(r"^\d+\.\d+\.\d+\.\d+$", parts[0]):
@@ -475,36 +484,27 @@ Link Type :- TCL-MPLS1-MB"""
                     self.append_log(f"[✓] Auto-detected Neighbor Peer IP from BGP: {peer_ip}\n")
                     break
 
-            # Command 3: Port Alarms
+            # Command 4: Port Alarms
             # show alarms all | match <date> | match <port_vni>
             port_vni = self.var_port_vni.get().strip() or "vni"
             cmd3 = f"show alarms all | match {today_str} | match {port_vni}"
-            self.append_log(f"\n[*] [3/6] Port Alarms: {cmd3}\n")
+            self.append_log(f"\n[*] [4/6] Port Alarms: {cmd3}\n")
             controller.send_command(cmd3, wait_after=1.5)
             out3 = self._wait_prompt(controller, cmd=cmd3, max_timeout=20.0)
             self.command_outputs["port_alarms"] = self._clean_cli_output(out3, cmd3)
             self.append_log(f"[✓] Captured Port Alarms.\n")
 
-            # Command 4: BGP Alarms
+            # Command 5: BGP Alarms
             # show alarms all | match <date> | match <peer_ip>
             if peer_ip:
                 cmd4 = f"show alarms all | match {today_str} | match {peer_ip}"
             else:
                 cmd4 = f"show alarms all | match {today_str} | match bgp"
-            self.append_log(f"\n[*] [4/6] BGP Alarms: {cmd4}\n")
+            self.append_log(f"\n[*] [5/6] BGP Alarms: {cmd4}\n")
             controller.send_command(cmd4, wait_after=1.5)
             out4 = self._wait_prompt(controller, cmd=cmd4, max_timeout=20.0)
             self.command_outputs["bgp_alarms"] = self._clean_cli_output(out4, cmd4)
             self.append_log(f"[✓] Captured BGP Alarms.\n")
-
-            # Command 5: SD-WAN SLA Monitor Status Down
-            # show orgs org <ORG>-NET sd-wan sla-monitor status-down | tab | match <circuit>
-            cmd5 = f"show orgs org {org}-NET sd-wan sla-monitor status-down | tab | match {circuit}"
-            self.append_log(f"\n[*] [5/6] SD-WAN SLA Monitor Down: {cmd5}\n")
-            controller.send_command(cmd5, wait_after=1.5)
-            out5 = self._wait_prompt(controller, cmd=cmd5, max_timeout=25.0)
-            self.command_outputs["sla_down"] = self._clean_cli_output(out5, cmd5)
-            self.append_log(f"[✓] Captured SLA Monitor Status-Down.\n")
 
             # Command 6: SD-WAN Detail Hub
             # show orgs org <ORG>-NET sd-wan detail <hub_name> | match <circuit>
@@ -780,21 +780,71 @@ Link Type :- TCL-MPLS1-MB"""
         wan_status = self._detect_wan_status(port_out, port_alarms)
         bgp_status = self._detect_bgp_status(bgp_out, bgp_alarms)
 
-        # Filter out CGW- and VC- from SLA monitor output
+        # Filter out CGW- and VC- from SLA monitor output and check for down HUB hostnames
         sla_raw = self.command_outputs.get("sla_down", "")
         sla_filtered_lines = []
+        down_hub_hostnames = []
         for line in sla_raw.splitlines():
+            # Don't consider HN with CGW-, VC-
             if "CGW-" in line or "VC-" in line:
                 continue
-            sla_filtered_lines.append(line)
-        sla_clean = "\n".join(sla_filtered_lines)
+            if line.strip() and "show orgs" not in line and "cli>" not in line and "[ok]" not in line:
+                sla_filtered_lines.append(line)
+                parts = line.strip().split()
+                # Second column is usually the remote hostname in tab format
+                if len(parts) >= 2:
+                    remote_hn = parts[1]
+                    if remote_hn not in down_hub_hostnames and not remote_hn.startswith("-"):
+                        down_hub_hostnames.append(remote_hn)
+            elif "show orgs" in line or "cli>" in line or "[ok]" in line:
+                sla_filtered_lines.append(line)
+
+        sla_clean = "\n".join(sla_filtered_lines).strip()
+
+        # Check if SLA output is empty (no down paths excluding CGW/VC)
+        has_real_sla_output = any(
+            l.strip() and "show orgs" not in l and "cli>" not in l and "[ok]" not in l
+            for l in sla_filtered_lines
+        )
+
+        if not has_real_sla_output:
+            # If no Output -> "Link is at present - Proceed with Resolved FLT Process and Conclude Manually"
+            resolved_summary = []
+            resolved_summary.append("Dear Team,\n")
+            resolved_summary.append("Link is at present - Proceed with Resolved FLT Process and Conclude Manually.\n")
+            resolved_summary.append(f"WAN interface status observed {wan_status}. The local-loop BGP session between the CPE and PE is {bgp_status}.\n")
+            resolved_summary.append(f"{'='*75}\n")
+            resolved_summary.append(f"TECHNICAL VERIFICATION & AUDIT LOGS ({hn} | {circ}):\n")
+            resolved_summary.append(f"{'='*75}\n")
+            resolved_summary.append(f"\n[1] Port Identification:\n{port_out}\n")
+            resolved_summary.append(f"\n[2] Specific VR BGP Status:\n{bgp_out}\n")
+            resolved_summary.append(f"\n[3] Port Alarms:\n{self.command_outputs.get('port_alarms', 'No alarms captured.')}\n")
+            resolved_summary.append(f"\n[4] BGP Alarms:\n{self.command_outputs.get('bgp_alarms', 'No alarms captured.')}\n")
+            resolved_summary.append(f"\n[5] SD-WAN SLA Monitor Status-Down (Filtered - excluding Controller/Gateway):\n{sla_clean or 'No active SLA monitor down paths detected.'}\n")
+            if "sdwan_detail" in self.command_outputs:
+                resolved_summary.append(f"\n[6] SD-WAN Detail ({hub_name}):\n{self.command_outputs.get('sdwan_detail', '')}\n")
+            resolved_summary.append(f"\nWarm Regards,\nTata Communications - NOC Network Operations")
+            return "\n".join(resolved_summary)
+
+        # Determine Hub disruption phrase:
+        # and All other Hub Locations = >2 HN in output of "show orgs org MB-NET sd-wan sla-monitor status-down | tab | match <circuit>"
+        if len(down_hub_hostnames) > 2:
+            hub_phrase = f"HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations."
+        elif len(down_hub_hostnames) == 2:
+            second_hub = [h for h in down_hub_hostnames if h != hub_name]
+            second_str = second_hub[0] if second_hub else down_hub_hostnames[1]
+            hub_phrase = f"HUB locations ({hub_name}, HUB End IP - {hub_ip}), ({second_str})."
+        elif len(down_hub_hostnames) == 1:
+            hub_phrase = f"HUB locations ({hub_name}, HUB End IP - {hub_ip})."
+        else:
+            hub_phrase = f"HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations."
 
         summary = []
         summary.append("Dear Team,\n")
         if t_start and t_start != "Alarm Start Time":
-            summary.append(f"During the incident window from {t_start} to {t_end}, the site experienced an SDWAN connectivity disruption with HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations.\n")
+            summary.append(f"During the incident window from {t_start} to {t_end}, the site experienced an SDWAN connectivity disruption with {hub_phrase}\n")
         else:
-            summary.append(f"During the incident window, the site experienced an SDWAN connectivity disruption with HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations.\n")
+            summary.append(f"During the incident window, the site experienced an SDWAN connectivity disruption with {hub_phrase}\n")
         summary.append(f"WAN interface status observed {wan_status}. The local-loop BGP session between the CPE and PE is {bgp_status}.\n")
         summary.append("ISP recommended to restore circuit with stability, identify the root cause, and provide RFO.\n")
         summary.append(f"{'='*75}\n")
