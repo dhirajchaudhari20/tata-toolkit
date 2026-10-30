@@ -1001,45 +1001,74 @@ class TicketAnalyzerFrame(ttk.Frame):
             self.append_log(f"\n[!] Unexpected Error during Investigation: {e}\n")
             self._finish_investigation(success=False, error_msg=str(e))
 
+    def _detect_session_state(self, controller):
+        """
+        Inspects the very latest active prompt line in the PuTTY terminal to determine exact session state:
+        - 'router_cli'     : inside branch router CLI prompt (e.g. admin@BRANCH-cli>)
+        - 'router_shell'   : inside branch router bash shell (e.g. [admin@BRANCH: ~]$)
+        - 'director_cli'   : inside Versa Director CLI (e.g. Administrator@VD-...>)
+        - 'director_shell' : inside Versa Director Linux bash (e.g. [admin@VD-...: ~]$)
+        - 'bastion'        : at Bastion jump host prompt (e.g. [mcpeuser1@PU1PAMMCPSGW01 ~]$)
+        - 'unknown'        : unknown or intermediate prompt
+        """
+        out = controller.copy_terminal_output() or ""
+        lines = [l.strip() for l in out.strip().splitlines() if l.strip()]
+        if not lines:
+            return "unknown", ""
+        last_line = lines[-1]
+
+        if "-cli>" in last_line and "@VD-" not in last_line:
+            return "router_cli", last_line
+        if "[admin@" in last_line and ": ~]" in last_line and "VD-" not in last_line:
+            return "router_shell", last_line
+        if ("@VD-" in last_line or "Administrator@VD" in last_line) and last_line.endswith(">"):
+            return "director_cli", last_line
+        if "VD-" in last_line and (last_line.endswith("$") or last_line.endswith("#")):
+            return "director_shell", last_line
+        if any(bp in last_line for bp in ["mcpeuser", "PU1PAMMCPSGW", "MCPESGW01"]) or (last_line.endswith("$") and "VD-" not in last_line and "admin@" not in last_line):
+            return "bastion", last_line
+
+        return "unknown", last_line
+
     def _login_to_target_router(self, controller, target_hostname, director_ip, director_user, director_pass):
         """
         Navigates Director CLI and reaches the branch router via SSH.
+        Always handles state properly whether session starts at Bastion, Director, or within a router.
         """
         self.append_log(f"[*] Navigating PuTTY session to reach {target_hostname}...\n")
         controller.activate_window()
         time.sleep(0.3)
         controller.send_enter(wait_after=1.0)
-        out = controller.copy_terminal_output() or ""
-        last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
 
-        # If inside another router CLI (not Director), exit back
-        if "-cli>" in last_lines and "@VD-" not in last_lines:
-            self.append_log("[*] Detected active router CLI prompt. Exiting to router shell...\n")
+        state, last_line = self._detect_session_state(controller)
+        self.append_log(f"[*] Detected terminal prompt state: '{state}' ({last_line})\n")
+
+        # Step 1: If inside another router CLI or shell, exit out
+        if state == "router_cli":
+            self.append_log("[*] Inside active router CLI. Exiting to router shell...\n")
             controller.send_command("exit", wait_after=2.0)
-            out = controller.copy_terminal_output() or ""
-            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
+            state, last_line = self._detect_session_state(controller)
 
-        if "[admin@" in last_lines and ": ~]" in last_lines and "VD-" not in last_lines:
-            self.append_log("[*] Detected router Linux shell. Exiting back to Director...\n")
+        if state == "router_shell":
+            self.append_log("[*] Inside router Linux shell. Exiting to Director...\n")
             controller.send_command("exit", wait_after=2.0)
-            out = controller.copy_terminal_output() or ""
-            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
+            state, last_line = self._detect_session_state(controller)
 
-        # If at Bastion prompt (neither 10.29.11.32 nor Director VD- prompt in recent lines), SSH to Director
-        if "10.29.11.32" not in last_lines and "VD-" not in last_lines:
-            self.append_log(f"[*] SSH into Versa Director ({director_ip})...\n")
+        # Step 2: If at Bastion prompt or disconnected, SSH into Versa Director
+        if state == "bastion" or ("10.29.11.32" not in last_line and state not in ["director_cli", "director_shell"]):
+            self.append_log(f"[*] At Bastion prompt. Logging into Versa Director ({director_ip})...\n")
             controller.send_command(f"ssh -l {director_user} {director_ip}", wait_after=3.0)
             controller.send_command(director_pass, wait_after=5.0, is_password=True)
-            out = controller.copy_terminal_output() or ""
-            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
+            controller.send_enter(wait_after=1.0)
+            state, last_line = self._detect_session_state(controller)
 
-        # Enter Director CLI if in shell
-        if "admin@VD-" in last_lines or (":~$" in last_lines and "VD-" in last_lines):
+        # Step 3: If in Director Linux shell, launch Director CLI
+        if state == "director_shell" or "admin@VD-" in last_line or (":~$" in last_line and "VD-" in last_line):
+            self.append_log("[*] At Director shell. Entering Director CLI...\n")
             controller.send_command("cli", wait_after=4.0)
             controller.send_command("set paginate false", wait_after=1.5)
-            out = controller.copy_terminal_output() or ""
-            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
-        elif "Administrator@VD-" in last_lines:
+            state, last_line = self._detect_session_state(controller)
+        elif state == "director_cli" or "Administrator@VD-" in last_line:
             controller.send_command("set paginate false", wait_after=1.0)
 
         # Resolve Branch Router IP from Director device list
