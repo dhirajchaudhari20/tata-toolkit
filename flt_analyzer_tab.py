@@ -684,9 +684,9 @@ Link Type :- TCL-MPLS1-MB"""
         sla_clean = "\n".join(sla_filtered_lines)
 
         summary = []
-        summary.append(f"During the incident window from {t_start} to {t_end}, the site experienced an SDWAN connectivity disruption with HUB locations ({hub_name}, HUB End IP - {hub_ip}) or All Hub Locations.\n")
-        summary.append(f"WAN interface status observed {wan_status}. The local-loop BGP session between the CPE and PE is {bgp_status}.\n")
-        summary.append(f"ISP recommended to restore circuit with stability, identify the root cause, and provide RFO.\n")
+        summary.append(f"During the incident window, the site experienced an SDWAN connectivity disruption with HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations.\n")
+        summary.append("WAN interface status observed Up/down/flapping frequently. The local-loop BGP session between the CPE and PE is Up/Down/Flapping//Down and up now.\n")
+        summary.append("ISP recommended to restore circuit with stability, identify the root cause, and provide RFO.\n")
         summary.append(f"{'='*75}\n")
         summary.append(f"TECHNICAL VERIFICATION & AUDIT LOGS ({hn} | {circ}):\n")
         summary.append(f"{'='*75}\n")
