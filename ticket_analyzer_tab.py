@@ -921,15 +921,12 @@ class TicketAnalyzerFrame(ttk.Frame):
                 self.command_outputs["uptime"] = self._clean_cli_output(out, cmd)
                 self.append_log(f"[✓] Captured System Uptime.\n")
 
-            # Safely disconnect router session back to Versa Director
-            self.append_log("\n[*] Returning to Versa Director prompt...\n")
-            for _ in range(3):
-                out = controller.copy_terminal_output() or ""
-                last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
-                if "admin@VD-" in last_lines or "Administrator@VD-" in last_lines or "@VD-" in last_lines:
-                    self.append_log("[✓] Confirmed back at Versa Director prompt.\n")
-                    break
-                controller.send_command("exit", wait_after=1.5)
+            # Safely disconnect router session: write exit 3 times to return cleanly to shell/director
+            self.append_log("\n[*] Disconnecting router session (sending exit 3 times)...\n")
+            controller.send_command("exit", wait_after=1.5)
+            controller.send_command("exit", wait_after=1.5)
+            controller.send_command("exit", wait_after=2.0)
+            self.append_log("[✓] Session disconnection sequence completed.\n")
 
             # Generate Executive Customer Update Message
             customer_msg = self._generate_customer_message(
@@ -1051,15 +1048,23 @@ class TicketAnalyzerFrame(ttk.Frame):
         if not raw_output:
             return "No output captured."
         idx = raw_output.rfind(cmd_str)
-        snippet = raw_output[idx:] if idx != -1 else raw_output
+        if idx == -1:
+            # Fallback: search by first word or before pipe
+            core = cmd_str.split("|")[0].strip() if "|" in cmd_str else cmd_str.split()[0]
+            idx = raw_output.rfind(core)
+            if idx == -1:
+                return "No output captured."
+        snippet = raw_output[idx:]
         lines = snippet.splitlines()
         clean = []
-        for line in lines:
-            if "[error]" in line:
-                continue
-            clean.append(line)
-            if line.strip().endswith("-cli>") and len(clean) > 3:
+        for i, line in enumerate(lines):
+            # If a subsequent command or prompt is reached after the header, stop
+            if i > 0 and "-cli>" in line:
+                # Include just the prompt itself without any subsequent command text
+                prompt_prefix = line.split("-cli>")[0] + "-cli>"
+                clean.append(prompt_prefix)
                 break
+            clean.append(line)
         return "\n".join(clean[:50]).strip()
 
     def _extract_ping_block(self, raw_ping_output):
@@ -1067,14 +1072,17 @@ class TicketAnalyzerFrame(ttk.Frame):
         if not raw_ping_output:
             return "No ping output captured."
         idx = raw_ping_output.rfind("ping ")
+        if idx == -1:
+            idx = raw_ping_output.rfind("rapid enable")
         snippet = raw_ping_output[idx:] if idx != -1 else raw_ping_output
         lines = snippet.splitlines()
         clean = []
-        for line in lines:
+        for i, line in enumerate(lines):
+            if i > 0 and "-cli>" in line:
+                prompt_prefix = line.split("-cli>")[0] + "-cli>"
+                clean.append(prompt_prefix)
+                break
             clean.append(line)
-            if "rtt min/avg/max" in line or line.strip().endswith("-cli>"):
-                if len(clean) > 3:
-                    break
         return "\n".join(clean[:25]).strip()
 
     def _discover_peer_from_bgp(self, bgp_output):

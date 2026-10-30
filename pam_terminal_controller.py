@@ -301,7 +301,7 @@ class PamTerminalController:
             for ch in cmd_clean:
                 try:
                     win32api.SendMessage(self.hwnd, WM_CHAR, ord(ch), 0)
-                    time.sleep(0.004)   # 4ms between chars — fast but reliable
+                    time.sleep(0.008)   # 8ms between chars — prevents drop on busy routers
                 except Exception:
                     pass
 
