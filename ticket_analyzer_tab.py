@@ -287,6 +287,8 @@ class TicketAnalyzerFrame(ttk.Frame):
         self.chk_alarm_vni_var = tk.BooleanVar(value=True)   # show alarms last-n 30 | match vni
         self.chk_ping_var      = tk.BooleanVar(value=True)   # ping <peer> source <src> routing-instance <vr>
         self.chk_uptime_var    = tk.BooleanVar(value=True)   # show system uptime
+        self.chk_custom_cmd_var = tk.BooleanVar(value=False)  # Custom user-defined command
+        self.custom_cmd_var    = tk.StringVar(value="")      # Command string entered by user
 
         # Row 0: Quick preset buttons
         preset_row = tk.Frame(cmd_box, bg="#f8f9fa")
@@ -361,6 +363,35 @@ class TicketAnalyzerFrame(ttk.Frame):
         ttk.Checkbutton(chk_grid, text="6. VNI Alarms (match vni)", variable=self.chk_alarm_vni_var).grid(row=1, column=1, sticky="w", padx=6, pady=2)
         ttk.Checkbutton(chk_grid, text="7. Rapid Ping Test (peer_ip / source_ip)", variable=self.chk_ping_var).grid(row=1, column=2, sticky="w", padx=6, pady=2)
         ttk.Checkbutton(chk_grid, text="8. System Uptime (show system uptime)", variable=self.chk_uptime_var).grid(row=1, column=3, sticky="w", padx=6, pady=2)
+
+        # Row 3: Custom Command Entry (Manual input)
+        custom_frame = tk.Frame(cmd_box, bg="#f8f9fa", pady=2)
+        custom_frame.pack(fill="x", pady=(3, 1))
+
+        ttk.Checkbutton(
+            custom_frame,
+            text="9. Custom Manual Command:",
+            variable=self.chk_custom_cmd_var
+        ).pack(side="left", padx=(6, 8))
+
+        self.entry_custom_cmd = ttk.Entry(
+            custom_frame,
+            textvariable=self.custom_cmd_var,
+            font=("Consolas", 9),
+            width=58
+        )
+        self.entry_custom_cmd.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        # Auto-enable custom command checkbox when user types in the entry
+        self.custom_cmd_var.trace_add("write", lambda *args: self.chk_custom_cmd_var.set(bool(self.custom_cmd_var.get().strip())))
+
+        tk.Label(
+            custom_frame,
+            text="(e.g. show route, show bgp summary, show arp)",
+            font=("Segoe UI", 8, "italic"),
+            fg="#64748b",
+            bg="#f8f9fa"
+        ).pack(side="left", padx=4)
 
         # ── 3. Action Button Bar (Packed Bottom-First to Guarantee Visibility) ──
         btn_bar = tk.Frame(self, bg="#f8f9fa", pady=4)
@@ -594,6 +625,8 @@ class TicketAnalyzerFrame(ttk.Frame):
         self.chk_alarm_vni_var.set(True)
         self.chk_ping_var.set(True)
         self.chk_uptime_var.set(True)
+        if self.custom_cmd_var.get().strip():
+            self.chk_custom_cmd_var.set(True)
 
     def _select_ping_only(self):
         self.chk_iface_var.set(False)
@@ -604,6 +637,7 @@ class TicketAnalyzerFrame(ttk.Frame):
         self.chk_alarm_vni_var.set(False)
         self.chk_ping_var.set(True)
         self.chk_uptime_var.set(False)
+        self.chk_custom_cmd_var.set(False)
 
     def _select_bgp_alarms_only(self):
         self.chk_iface_var.set(False)
@@ -614,6 +648,7 @@ class TicketAnalyzerFrame(ttk.Frame):
         self.chk_alarm_vni_var.set(True)
         self.chk_ping_var.set(False)
         self.chk_uptime_var.set(False)
+        self.chk_custom_cmd_var.set(False)
 
     def _deselect_all_commands(self):
         self.chk_iface_var.set(False)
@@ -624,6 +659,7 @@ class TicketAnalyzerFrame(ttk.Frame):
         self.chk_alarm_vni_var.set(False)
         self.chk_ping_var.set(False)
         self.chk_uptime_var.set(False)
+        self.chk_custom_cmd_var.set(False)
 
     def on_text_changed(self):
         text = self.ticket_input_text.get("1.0", tk.END).strip()
@@ -753,10 +789,11 @@ class TicketAnalyzerFrame(ttk.Frame):
             self.chk_alarm_peer_var.get(),
             self.chk_alarm_vni_var.get(),
             self.chk_ping_var.get(),
-            self.chk_uptime_var.get()
+            self.chk_uptime_var.get(),
+            (self.chk_custom_cmd_var.get() and bool(self.custom_cmd_var.get().strip()))
         ])
         if not any_selected:
-            messagebox.showwarning("No Commands Selected", "Please select at least one diagnostic command checkbox to run.")
+            messagebox.showwarning("No Commands Selected", "Please select at least one diagnostic command checkbox or enter a custom command to run.")
             return
 
         self.is_running = True
@@ -915,11 +952,23 @@ class TicketAnalyzerFrame(ttk.Frame):
             # Command 8: show system uptime
             if self.chk_uptime_var.get() and not self.stop_event.is_set():
                 cmd = "show system uptime"
-                self.append_log(f"\n[*] [8/8] Executing: {cmd}\n")
+                self.append_log(f"\n[*] [8/9] Executing: {cmd}\n")
                 controller.send_command(cmd, wait_after=1.5)
                 out = self._wait_prompt(controller, cmd=cmd, max_timeout=15.0)
                 self.command_outputs["uptime"] = self._clean_cli_output(out, cmd)
                 self.append_log(f"[✓] Captured System Uptime.\n")
+
+            # Command 9: Custom User Command (if specified)
+            custom_cmd = self.custom_cmd_var.get().strip()
+            if self.chk_custom_cmd_var.get() and custom_cmd and not self.stop_event.is_set():
+                self.append_log(f"\n[*] [9/9] Executing Custom Command: {custom_cmd}\n")
+                controller.send_command(custom_cmd, wait_after=1.5)
+                out = self._wait_prompt(controller, cmd=custom_cmd, max_timeout=25.0)
+                self.command_outputs["custom_cmd"] = {
+                    "cmd": custom_cmd,
+                    "output": self._clean_cli_output(out, custom_cmd)
+                }
+                self.append_log(f"[✓] Captured Custom Command: {custom_cmd}\n")
 
             # Safely disconnect router session: exit router CLI -> router shell -> Director CLI -> Bastion mcpeuser
             self.append_log("\n[*] Disconnecting all nested sessions back to Bastion mcpeuser...\n")
@@ -1219,6 +1268,13 @@ class TicketAnalyzerFrame(ttk.Frame):
         if "uptime" in outputs:
             msg.append(f"\n--- [8] Router System & Service Uptime ---")
             msg.append(outputs["uptime"])
+
+        # Section 9: Custom User Command Output
+        if "custom_cmd" in outputs:
+            custom_data = outputs["custom_cmd"]
+            cmd_name = custom_data.get("cmd", "Custom Command")
+            msg.append(f"\n--- [9] Additional Verification ({cmd_name}) ---")
+            msg.append(custom_data.get("output", ""))
 
         msg.append(f"\nOur engineering team is actively monitoring the circuit. For any queries, please reply directly to this ticket.\n")
         msg.append(f"Warm Regards,\nTata Communications - NOC Network Operations")
