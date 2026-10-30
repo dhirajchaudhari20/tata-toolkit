@@ -101,8 +101,19 @@ def parse_ticket_email(raw_text):
     if not raw_text:
         return info
 
+    # 1. Strict Ticket Number Format (IN followed by 10 to 16 digits, e.g. IN202610300112)
+    # If it is not in this specific format, do not take it as ticket number.
+    m_strict_tkt = re.search(r"\b(IN\d{10,16})\b", raw_text)
+    if m_strict_tkt:
+        info["ticket_number"] = m_strict_tkt.group(1).strip()
+    else:
+        # Check explicit label "TICKET NUMBER: IN..."
+        m_tkt_label = re.search(r"TICKET\s*NUMBER\s*[\t:]*\s*(IN\d{10,16})", raw_text, re.IGNORECASE)
+        if m_tkt_label:
+            info["ticket_number"] = m_tkt_label.group(1).strip()
+
+    # 2. Extract other standard labeled fields
     patterns = {
-        "ticket_number": r"TICKET\s*NUMBER\s*[\t:]*\s*([^\r\n]+)",
         "location": r"LOCATION\s*[\t:]*\s*([^\r\n]+)",
         "configuration_item": r"CONFIGURATION\s*ITEM\s*[\t:]*\s*([^\r\n]+)",
         "title": r"TITLE\s*[\t:]*\s*([^\r\n]+)",
@@ -117,6 +128,12 @@ def parse_ticket_email(raw_text):
         m = re.search(pat, raw_text, re.IGNORECASE)
         if m:
             info[key] = m.group(1).strip()
+
+    # ISP Circuit ID pattern detection (e.g. 091AHME6230A0137347)
+    if not info["circuit_id"]:
+        m_isp_cid = re.search(r"\b(\d{3}[A-Za-z]{4}\d{4}[A-Za-z0-9]+)\b", raw_text)
+        if m_isp_cid:
+            info["circuit_id"] = m_isp_cid.group(1).strip()
 
     # Direct Configuration Item or Pattern Match: -HOST||CIRCUIT or HOST||CIRCUIT
     m_pipe = re.search(r"([A-Za-z0-9_-]+)\s*\|\|\s*([A-Za-z0-9_-]+)", raw_text)
@@ -158,11 +175,6 @@ def parse_ticket_email(raw_text):
     m_bso = re.search(r"BSO\s*ID\s*[:-]+\s*([^\r\n]+)", raw_text, re.IGNORECASE)
     if m_bso and not info["circuit_id"]:
         info["circuit_id"] = m_bso.group(1).strip()
-
-    # Problem ID / Trigger ID as Ticket Number fallback
-    m_orig_prob = re.search(r"(?:Original\s*problem\s*ID|Trigger\s*Id)\s*[:=]+\s*([0-9A-Za-z_-]+)", raw_text, re.IGNORECASE)
-    if m_orig_prob and not info["ticket_number"]:
-        info["ticket_number"] = m_orig_prob.group(1).strip()
 
     # Problem started timestamp
     m_start_time = re.search(r"Problem\s*started\s*at\s*([0-9:.]+\s*on\s*[0-9.]+)", raw_text, re.IGNORECASE)
