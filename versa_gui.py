@@ -252,7 +252,7 @@ class VersaRouterAuditGUI:
         self._setup_ui()
 
         if sleep_preventer:
-            sleep_preventer.register_callback(self._on_anti_sleep_state_changed)
+            sleep_preventer.start("Versa Operations Suite - Always On")
 
         # Offline Update check in background thread on startup
         threading.Thread(target=self._startup_update_check, daemon=True).start()
@@ -416,7 +416,7 @@ class VersaRouterAuditGUI:
         )
         about_btn.pack(side="left", padx=4)
 
-        # ── Central Top-Level Notebook & Tabs ──
+        # ── Central Top-Level Notebook & Dynamic Tab Manager ──
         self.main_notebook = ttk.Notebook(self.root)
         self.main_notebook.pack(side="top", fill="both", expand=True, padx=12, pady=(4, 2))
 
@@ -426,11 +426,35 @@ class VersaRouterAuditGUI:
         self.tab_dc_mesh = ttk.Frame(self.main_notebook)
         self.tab_history = ttk.Frame(self.main_notebook)
 
-        self.main_notebook.add(self.tab_router, text="  📡 Versa Router Health Auditor  ")
-        self.main_notebook.add(self.tab_ticket, text="  🎫 Ticket & Alert Diagnostics  ")
-        self.main_notebook.add(self.tab_cid, text="  ⚡ TTBS CID Punchability Checker  ")
-        self.main_notebook.add(self.tab_dc_mesh, text="  🏢 DC to Branch Mesh Ping  ")
-        self.main_notebook.add(self.tab_history, text="  🕒 Audit History & Past Records  ")
+        # Tab registry for dynamic show/hide via Menu
+        self._tabs_registry = [
+            {"id": "router", "name": "📡 Versa Router Health Auditor", "frame": self.tab_router, "var": tk.BooleanVar(value=True)},
+            {"id": "ticket", "name": "🎫 Ticket & Alert Diagnostics", "frame": self.tab_ticket, "var": tk.BooleanVar(value=True)},
+            {"id": "cid", "name": "⚡ TTBS CID Punchability Checker", "frame": self.tab_cid, "var": tk.BooleanVar(value=True)},
+            {"id": "dc_mesh", "name": "🏢 DC to Branch Mesh Ping", "frame": self.tab_dc_mesh, "var": tk.BooleanVar(value=True)},
+            {"id": "history", "name": "🕒 Audit History & Past Records", "frame": self.tab_history, "var": tk.BooleanVar(value=True)},
+        ]
+
+        # Add all tabs initially
+        for tab_info in self._tabs_registry:
+            self.main_notebook.add(tab_info["frame"], text=f"  {tab_info['name']}  ")
+
+        # Add '📑 Modules Menu' button to header
+        self.modules_menu_btn = tk.Button(
+            right_hdr,
+            text="📑 Modules Menu ▾",
+            font=("Segoe UI", 9, "bold"),
+            bg="#0f766e",
+            fg="white",
+            activebackground="#115e59",
+            activeforeground="white",
+            relief="flat",
+            cursor="hand2",
+            padx=10,
+            pady=3,
+            command=self._show_modules_menu
+        )
+        self.modules_menu_btn.pack(side="left", padx=4)
 
         # Initialize Tab 2: Ticket & Alert Auto-Diagnostics
         try:
@@ -467,6 +491,59 @@ class VersaRouterAuditGUI:
         except Exception as e:
             err_box = ttk.Label(self.tab_history, text=f"Could not load Audit History:\n{e}", foreground="red", padding=20)
             err_box.pack()
+
+    def _show_modules_menu(self):
+        """Displays a dropdown menu to toggle / open / close individual suite modules."""
+        menu = tk.Menu(self.root, tearoff=0, font=("Segoe UI", 9))
+        for tab_info in self._tabs_registry:
+            # Menu item with checkmark indicating visibility
+            menu.add_checkbutton(
+                label=f"  {tab_info['name']}",
+                variable=tab_info["var"],
+                command=lambda t=tab_info: self._toggle_module_tab(t)
+            )
+        menu.add_separator()
+        menu.add_command(label="  👁 Open All Modules", command=self._open_all_modules)
+        
+        # Position menu directly below the Modules Menu button
+        try:
+            x = self.modules_menu_btn.winfo_rootx()
+            y = self.modules_menu_btn.winfo_rooty() + self.modules_menu_btn.winfo_height() + 2
+            menu.tk_popup(x, y)
+        except Exception:
+            menu.tk_popup(self.root.winfo_pointerx(), self.root.winfo_pointery())
+
+    def _toggle_module_tab(self, tab_info):
+        """Shows or hides a tab in the notebook based on check state."""
+        frame = tab_info["frame"]
+        is_visible = tab_info["var"].get()
+        tabs_in_nb = self.main_notebook.tabs()
+        str_frame = str(frame)
+
+        if is_visible:
+            if str_frame not in tabs_in_nb:
+                # Re-add in natural registry order
+                # Find correct insert index based on order in _tabs_registry
+                self.main_notebook.add(frame, text=f"  {tab_info['name']}  ")
+                self.main_notebook.select(frame)
+        else:
+            # Prevent hiding if it is the only remaining visible tab
+            visible_count = sum(1 for t in self._tabs_registry if t["var"].get())
+            if visible_count == 0:
+                tab_info["var"].set(True)
+                messagebox.showinfo("Module Notice", "At least one module must remain visible.")
+                return
+            if str_frame in tabs_in_nb:
+                self.main_notebook.forget(frame)
+
+    def _open_all_modules(self):
+        """Re-enables and displays all suite module tabs."""
+        tabs_in_nb = self.main_notebook.tabs()
+        for tab_info in self._tabs_registry:
+            tab_info["var"].set(True)
+            frame = tab_info["frame"]
+            if str(frame) not in tabs_in_nb:
+                self.main_notebook.add(frame, text=f"  {tab_info['name']}  ")
 
         # ── Tab 1: Versa Router Audit Controls & Layout ──
         top_frame = ttk.LabelFrame(self.tab_router, text=" Versa SD-WAN & Network Configuration (Pre-configured) ", padding=10)
@@ -854,21 +931,16 @@ class VersaRouterAuditGUI:
         )
         self.clear_btn.pack(side="right")
 
-        # Anti-Sleep Keep-Awake Toggle Button
-        is_awake = sleep_preventer.is_active() if sleep_preventer else False
-        self.anti_sleep_btn = tk.Button(
+        # Anti-Sleep Keep-Awake Always-ON Status Indicator
+        self.anti_sleep_btn = tk.Label(
             btn_frame,
-            text="☕ Anti-Sleep: ON" if is_awake else "☕ Anti-Sleep: OFF",
+            text="☕ Anti-Sleep: ALWAYS ON",
             font=("Segoe UI", 9, "bold"),
-            bg="#0f766e" if is_awake else "#64748b",
-            fg="white",
-            activebackground="#115e59",
-            activeforeground="white",
-            relief="flat",
-            cursor="hand2",
+            bg="#065f46",
+            fg="#a7f3d0",
+            relief="groove",
             padx=12,
-            pady=6,
-            command=self._toggle_anti_sleep
+            pady=5
         )
         self.anti_sleep_btn.pack(side="right", padx=(0, 8))
 
@@ -1105,8 +1177,6 @@ class VersaRouterAuditGUI:
         if self.is_running:
             self.stop_event.set()
             self.pause_event.set()  # Release pause so thread can exit immediately
-            if sleep_preventer:
-                sleep_preventer.stop()
             self.status_var.set("Stopping audit gracefully... finishing current test.")
             self.stop_btn.config(state="disabled")
             if hasattr(self, 'pause_btn'):
@@ -2719,9 +2789,6 @@ class VersaRouterAuditGUI:
 
     def _on_audit_finished(self):
         self.is_running = False
-        if sleep_preventer:
-            sleep_preventer.stop()
-            self.append_log("[☕ Anti-Sleep Released]: Normal Windows power settings restored.\n")
         self.pause_event.set()
         self.start_btn.config(state="normal")
         if hasattr(self, 'pause_btn'):

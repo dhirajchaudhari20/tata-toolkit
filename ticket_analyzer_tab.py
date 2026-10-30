@@ -384,21 +384,16 @@ class TicketAnalyzerFrame(ttk.Frame):
         )
         self.clear_btn.pack(side="left")
 
-        # Anti-Sleep Keep-Awake Toggle Button
-        is_awake = sleep_preventer.is_active() if sleep_preventer else False
-        self.anti_sleep_btn = tk.Button(
+        # Anti-Sleep Keep-Awake Always-ON Status Indicator
+        self.anti_sleep_btn = tk.Label(
             btn_bar,
-            text="☕ Anti-Sleep: ON" if is_awake else "☕ Anti-Sleep: OFF",
+            text="☕ Anti-Sleep: ALWAYS ON",
             font=("Segoe UI", 9, "bold"),
-            bg="#0f766e" if is_awake else "#64748b",
-            fg="white",
-            activebackground="#115e59",
-            activeforeground="white",
-            relief="flat",
-            cursor="hand2",
+            bg="#065f46",
+            fg="#a7f3d0",
+            relief="groove",
             padx=12,
-            pady=6,
-            command=self._toggle_anti_sleep
+            pady=5
         )
         self.anti_sleep_btn.pack(side="right", padx=(4, 0))
 
@@ -684,10 +679,6 @@ class TicketAnalyzerFrame(ttk.Frame):
         if not self.is_running:
             return
         self.stop_event.set()
-        if sleep_preventer:
-            sleep_preventer.stop()
-            if hasattr(self, 'anti_sleep_btn'):
-                self.anti_sleep_btn.config(text="☕ Anti-Sleep: OFF", bg="#64748b")
         self.status_var.set("Stopping incident diagnostics gracefully...")
         self.append_log("\n[!] STOP requested by user. Halting execution...\n")
 
@@ -1016,18 +1007,30 @@ class TicketAnalyzerFrame(ttk.Frame):
 
         msg = []
         msg.append(f"Dear Customer,\n")
-        msg.append(f"With reference to Ticket #{tkt} regarding Site '{host}' ({loc}):\n")
+        msg.append(f"With reference to Ticket #{tkt} regarding Site '{host}' ({loc}) [{circuit}]:\n")
         msg.append(f"Our NOC Network Operations team has completed in-depth diagnostics on the Versa SD-WAN appliance.")
 
         # Status opening
-        if port_down and loss == 100.0:
-            msg.append(f"We observed that the physical WAN access port / peer session for '{circuit}' is DOWN with 100% packet loss.")
+        if port_down and (loss == 100.0 or loss is None):
+            msg.append(
+                f"We observed that the access port BGP session for circuit '{circuit}' is currently DOWN with 100% packet loss."
+            )
+        elif loss == 100.0:
+            msg.append(
+                f"We observed that the access port BGP session for circuit '{circuit}' is currently DOWN with 100% packet loss."
+            )
         elif loss is not None and loss > 0.0:
-            msg.append(f"We observed packet loss on circuit '{circuit}' ({loss:.1f}% packet loss, Latency: {avg_rtt:.2f} ms).")
+            msg.append(
+                f"We observed that the BGP session for circuit '{circuit}' is experiencing intermittent degradation with {loss:.1f}% packet loss (Average Latency: {avg_rtt:.2f} ms)."
+            )
         elif loss == 0.0:
-            msg.append(f"We observed that the WAN access port and peer session for '{circuit}' are currently REACHABLE (0% packet loss, Latency: {avg_rtt:.2f} ms).")
+            msg.append(
+                f"We observed that the access port BGP session for circuit '{circuit}' is currently UP and ESTABLISHED with 0% packet loss (Average Latency: {avg_rtt:.2f} ms)."
+            )
         else:
-            msg.append(f"Please find the live router status and session diagnostics below.")
+            msg.append(
+                f"We observed that the access port BGP session for circuit '{circuit}' is currently DOWN with 100% packet loss."
+            )
 
         msg.append(f"\n--- Incident & Circuit Parameters ---")
         msg.append(f"• Ticket Number    : {tkt}")
@@ -1088,10 +1091,6 @@ class TicketAnalyzerFrame(ttk.Frame):
         self.root.after(0, self.progress_bar.stop)
         self.root.after(0, lambda: self.start_btn.config(state="normal"))
         self.root.after(0, lambda: self.stop_btn.config(state="disabled"))
-        if sleep_preventer:
-            sleep_preventer.stop()
-            if hasattr(self, 'anti_sleep_btn'):
-                self.root.after(0, lambda: self.anti_sleep_btn.config(text="☕ Anti-Sleep: OFF", bg="#64748b"))
 
         if success:
             self.root.after(0, lambda: self.status_var.set("Status: Investigation Complete! Customer update message generated."))

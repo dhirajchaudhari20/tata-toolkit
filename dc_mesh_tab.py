@@ -404,21 +404,16 @@ class DCMeshPingFrame(ttk.Frame):
         )
         self.clear_btn.pack(side="left")
 
-        # Anti-Sleep Keep-Awake Indicator & Toggle
-        is_awake = sleep_preventer.is_active() if sleep_preventer else False
-        self.anti_sleep_btn = tk.Button(
+        # Anti-Sleep Keep-Awake Always-ON Status Indicator
+        self.anti_sleep_btn = tk.Label(
             btn_bar,
-            text="☕ Anti-Sleep: ON" if is_awake else "☕ Anti-Sleep: OFF",
+            text="☕ Anti-Sleep: ALWAYS ON",
             font=("Segoe UI", 9, "bold"),
-            bg="#0f766e" if is_awake else "#475569",
-            fg="white",
-            activebackground="#115e59",
-            activeforeground="white",
-            relief="flat",
-            cursor="hand2",
+            bg="#065f46",
+            fg="#a7f3d0",
+            relief="groove",
             padx=12,
-            pady=6,
-            command=self._toggle_anti_sleep
+            pady=5
         )
         self.anti_sleep_btn.pack(side="right", padx=(4, 0))
 
@@ -900,8 +895,6 @@ class DCMeshPingFrame(ttk.Frame):
             return
         self.stop_event.set()
         self.pause_event.set()
-        if sleep_preventer:
-            sleep_preventer.stop()
         self.status_var.set("Stopping mesh audit gracefully...")
         self.append_log("[!] STOP signal sent. Gracefully halting after current operation...\n")
 
@@ -1044,7 +1037,11 @@ class DCMeshPingFrame(ttk.Frame):
                         self.append_log(f"         cmd: {cmd_ping}\n")
 
                         controller.send_command(cmd_ping, wait_after=1.5)
-                        ping_out = self._wait_prompt(controller, cmd="ping", max_timeout=35.0)
+                        ping_out_raw = self._wait_prompt(controller, cmd="ping", max_timeout=35.0)
+                        # Extract ONLY the portion of the buffer after the last occurrence of this
+                        # specific ping command — prevents previous ping results from contaminating
+                        # the RTT parse when the PuTTY scrollback buffer accumulates multiple pings.
+                        ping_out = self._extract_last_cmd_output(ping_out_raw, cmd_ping)
 
                         stats = self._parse_ping(ping_out)
                         loss = stats["loss"]
@@ -1164,9 +1161,6 @@ class DCMeshPingFrame(ttk.Frame):
 
     def _finish_audit(self, success=True):
         self.is_running = False
-        if sleep_preventer:
-            sleep_preventer.stop()
-            self.append_log("[☕ Anti-Sleep Released]: Normal Windows power settings restored.\n")
         self.root.after(0, lambda: self.start_btn.config(state="normal"))
         self.root.after(0, lambda: self.pause_btn.config(state="disabled", text="⏸  Pause", bg="#d97706"))
         self.root.after(0, lambda: self.stop_btn.config(state="disabled"))
@@ -1313,6 +1307,30 @@ class DCMeshPingFrame(ttk.Frame):
             "neighbor_ip": "10.116.135.9",
             "source_ip": "10.116.135.10"
         }
+
+    def _extract_last_cmd_output(self, full_buffer, cmd):
+        """
+        Slices the terminal buffer to return ONLY the text that appears after
+        the last occurrence of `cmd`. This prevents earlier ping outputs that
+        are still in the PuTTY scrollback buffer from polluting the RTT parse.
+
+        Strategy:
+          1. Find the LAST index of the command string in the buffer.
+          2. Return only the text after that index.
+          3. If the command is not found, return the full buffer (fallback).
+        """
+        # Try exact command match first
+        idx = full_buffer.rfind(cmd)
+        if idx != -1:
+            return full_buffer[idx:]
+
+        # Fallback: try matching just the first 40 chars of the command (handles terminal line-wrap)
+        short_cmd = cmd[:40].strip()
+        idx = full_buffer.rfind(short_cmd)
+        if idx != -1:
+            return full_buffer[idx:]
+
+        return full_buffer  # last-resort: use entire buffer
 
     def _parse_ping(self, ping_output):
         """
