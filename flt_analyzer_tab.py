@@ -77,8 +77,8 @@ class FltAnalyzerFrame(ttk.Frame):
         self.var_alarm_start = tk.StringVar(value="")
         self.var_alarm_end = tk.StringVar(value="Ongoing")
         self.var_org = tk.StringVar(value="MB")
-        self.var_hub_name = tk.StringVar(value="IFT-MB-3059-IFTHYD-R1")
-        self.var_hub_ip = tk.StringVar(value="10.116.192.90")
+        self.var_hub_name = tk.StringVar(value="")
+        self.var_hub_ip = tk.StringVar(value="")
         self.var_port_vni = tk.StringVar(value="vni-0/0.0")
         self.var_peer_ip = tk.StringVar(value="")
         self.var_vr = tk.StringVar(value="")
@@ -329,6 +329,22 @@ class FltAnalyzerFrame(ttk.Frame):
         if m_ip:
             self.var_peer_ip.set(m_ip.group(1).strip())
 
+        # 5. Extract Hub Router Name and Hub End IP if present in ticket text
+        m_hub = re.search(r"SD-WAN\s+Datapath\s+Down\s+from\s+([A-Za-z0-9_-]+)", raw, re.IGNORECASE)
+        if m_hub:
+            from_device = m_hub.group(1).strip()
+            # If the from_device is a Hub router (starts with IFT- or not a VC-/CGW-)
+            if not from_device.startswith("VC-") and not from_device.startswith("CGW-"):
+                self.var_hub_name.set(from_device)
+
+        m_hub_explicit = re.search(r"(?:Hub\s*Router|Hub\s*Location|Hub\s*End\s*Device)\s*[:-]\s*([A-Za-z0-9_-]+)", raw, re.IGNORECASE)
+        if m_hub_explicit:
+            self.var_hub_name.set(m_hub_explicit.group(1).strip())
+
+        m_hub_ip = re.search(r"(?:Hub\s*End\s*IP|Hub\s*IP)\s*[:-]\s*([0-9.]+)", raw, re.IGNORECASE)
+        if m_hub_ip:
+            self.var_hub_ip.set(m_hub_ip.group(1).strip())
+
         # Auto-resolve Org
         self._on_hostname_changed()
         self._on_circuit_changed()
@@ -364,6 +380,8 @@ Link Type :- TCL-MPLS1-MB"""
         self.var_circuit.set("")
         self.var_alarm_start.set("")
         self.var_peer_ip.set("")
+        self.var_hub_name.set("")
+        self.var_hub_ip.set("")
 
     def append_log(self, text):
         def _insert():
@@ -454,6 +472,18 @@ Link Type :- TCL-MPLS1-MB"""
             self.command_outputs["sla_down"] = out_sla or ""
             self.append_log(f"[✓] Captured SLA Monitor Status-Down.\n")
 
+            # Extract down hub hostnames from SLA down output (excluding CGW- and VC-)
+            down_hubs = []
+            for l in (out_sla or "").splitlines():
+                if "CGW-" in l or "VC-" in l or "show orgs" in l or "cli>" in l or "[ok]" in l:
+                    continue
+                parts = l.strip().split()
+                if len(parts) >= 2:
+                    r_hn = parts[1]
+                    if r_hn not in down_hubs and not r_hn.startswith("-"):
+                        down_hubs.append(r_hn)
+            self.command_outputs["down_hubs"] = down_hubs
+
             # Command 2: Port Identification
             # show interfaces brief | match <circuit> | except 172
             cmd1 = f"show interfaces brief | match {circuit} | except 172"
@@ -534,9 +564,16 @@ Link Type :- TCL-MPLS1-MB"""
 
             # Command 6: SD-WAN Detail Hub
             # show orgs org <ORG>-NET sd-wan detail <hub_name> | match <circuit>
-            if hub_name:
-                cmd6 = f"show orgs org {org}-NET sd-wan detail {hub_name} | match {circuit}"
-                self.append_log(f"\n[*] [6/6] SD-WAN Detail for Hub {hub_name}: {cmd6}\n")
+            # If hub_name not provided by user, auto-select the first down HUB from SLA monitor output
+            target_hub = hub_name
+            if not target_hub and "down_hubs" in self.command_outputs and self.command_outputs["down_hubs"]:
+                target_hub = self.command_outputs["down_hubs"][0]
+                self.var_hub_name.set(target_hub)
+                self.append_log(f"[✓] Auto-selected down Hub from SLA monitor: {target_hub}\n")
+
+            if target_hub:
+                cmd6 = f"show orgs org {org}-NET sd-wan detail {target_hub} | match {circuit}"
+                self.append_log(f"\n[*] [6/6] SD-WAN Detail for Hub {target_hub}: {cmd6}\n")
                 out6, err = self._execute_cmd_with_retry(controller, cmd6, max_timeout=25.0, max_tries=2)
                 if err:
                     self.append_log(f"[!] {err}\n")
@@ -545,6 +582,17 @@ Link Type :- TCL-MPLS1-MB"""
                     return
                 self.command_outputs["sdwan_detail"] = out6 or ""
                 self.append_log(f"[✓] Captured SD-WAN Detail.\n")
+
+                # Try to auto-extract Hub End IP from SD-WAN Detail output if not set
+                if not self.var_hub_ip.get().strip():
+                    for line in (out6 or "").splitlines():
+                        if "ipv4" in line:
+                            m_ip_detail = re.search(r"\b(10\.\d+\.\d+\.\d+)\b", line)
+                            if m_ip_detail:
+                                detected_hub_ip = m_ip_detail.group(1).strip()
+                                self.var_hub_ip.set(detected_hub_ip)
+                                self.append_log(f"[✓] Auto-detected Hub End IP: {detected_hub_ip}\n")
+                                break
 
             # Disconnect cleanly all the way back to Bastion mcpeuser (4-5 exits)
             self._safe_disconnect_to_bastion(controller)
@@ -845,8 +893,15 @@ Link Type :- TCL-MPLS1-MB"""
         circ = self.var_circuit.get().strip() or "Circuit"
         t_start = self.var_alarm_start.get().strip() or "Alarm Start Time"
         t_end = self.var_alarm_end.get().strip() or "Ongoing"
-        hub_name = self.var_hub_name.get().strip() or "Location-A"
-        hub_ip = self.var_hub_ip.get().strip() or "0.0.0.0"
+        hub_name = self.var_hub_name.get().strip()
+        hub_ip = self.var_hub_ip.get().strip()
+
+        # If hub_name still empty, check if we found down_hubs
+        if not hub_name and "down_hubs" in self.command_outputs and self.command_outputs["down_hubs"]:
+            hub_name = self.command_outputs["down_hubs"][0]
+
+        hub_name_str = hub_name or "Location-A"
+        hub_ip_str = hub_ip or "0.0.0.0"
 
         # ── Real-time dynamic status analysis from captured CLI logs ──
         port_out = self.command_outputs.get("port_ident", "")
@@ -890,6 +945,7 @@ Link Type :- TCL-MPLS1-MB"""
             resolved_summary.append("Dear Team,\n")
             resolved_summary.append("Link is at present - Proceed with Resolved FLT Process and Conclude Manually.\n")
             resolved_summary.append(f"WAN interface status observed {wan_status}. The local-loop BGP session between the CPE and PE is {bgp_status}.\n")
+            resolved_summary.append("ISP recommended to restore circuit with stability, identify the root cause, and provide RFO.\n")
             resolved_summary.append(f"{'='*75}\n")
             resolved_summary.append(f"TECHNICAL VERIFICATION & AUDIT LOGS ({hn} | {circ}):\n")
             resolved_summary.append(f"{'='*75}\n")
@@ -899,22 +955,22 @@ Link Type :- TCL-MPLS1-MB"""
             resolved_summary.append(f"\n[4] BGP Alarms:\n{self.command_outputs.get('bgp_alarms', 'No alarms captured.')}\n")
             resolved_summary.append(f"\n[5] SD-WAN SLA Monitor Status-Down (Filtered - excluding Controller/Gateway):\n{sla_clean or 'No active SLA monitor down paths detected.'}\n")
             if "sdwan_detail" in self.command_outputs:
-                resolved_summary.append(f"\n[6] SD-WAN Detail ({hub_name}):\n{self.command_outputs.get('sdwan_detail', '')}\n")
+                resolved_summary.append(f"\n[6] SD-WAN Detail ({hub_name_str}):\n{self.command_outputs.get('sdwan_detail', '')}\n")
             resolved_summary.append(f"\nWarm Regards,\nTata Communications - NOC Network Operations")
             return "\n".join(resolved_summary)
 
         # Determine Hub disruption phrase:
         # and All other Hub Locations = >2 HN in output of "show orgs org MB-NET sd-wan sla-monitor status-down | tab | match <circuit>"
         if len(down_hub_hostnames) > 2:
-            hub_phrase = f"HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations."
+            hub_phrase = f"HUB locations ({hub_name_str}, HUB End IP - {hub_ip_str}), and All other Hub Locations."
         elif len(down_hub_hostnames) == 2:
-            second_hub = [h for h in down_hub_hostnames if h != hub_name]
+            second_hub = [h for h in down_hub_hostnames if h != hub_name_str]
             second_str = second_hub[0] if second_hub else down_hub_hostnames[1]
-            hub_phrase = f"HUB locations ({hub_name}, HUB End IP - {hub_ip}), ({second_str})."
+            hub_phrase = f"HUB locations ({hub_name_str}, HUB End IP - {hub_ip_str}), ({second_str})."
         elif len(down_hub_hostnames) == 1:
-            hub_phrase = f"HUB locations ({hub_name}, HUB End IP - {hub_ip})."
+            hub_phrase = f"HUB locations ({hub_name_str}, HUB End IP - {hub_ip_str})."
         else:
-            hub_phrase = f"HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations."
+            hub_phrase = f"HUB locations ({hub_name_str}, HUB End IP - {hub_ip_str}), and All other Hub Locations."
 
         summary = []
         summary.append("Dear Team,\n")
@@ -934,7 +990,7 @@ Link Type :- TCL-MPLS1-MB"""
         summary.append(f"\n[4] BGP Alarms:\n{self.command_outputs.get('bgp_alarms', 'No alarms captured.')}\n")
         summary.append(f"\n[5] SD-WAN SLA Monitor Status-Down (Filtered - excluding Controller/Gateway):\n{sla_clean}\n")
         if "sdwan_detail" in self.command_outputs:
-            summary.append(f"\n[6] SD-WAN Detail ({hub_name}):\n{self.command_outputs.get('sdwan_detail', '')}\n")
+            summary.append(f"\n[6] SD-WAN Detail ({hub_name_str}):\n{self.command_outputs.get('sdwan_detail', '')}\n")
 
         summary.append(f"\nWarm Regards,\nTata Communications - NOC Network Operations")
         return "\n".join(summary)
