@@ -596,6 +596,8 @@ Link Type :- TCL-MPLS1-MB"""
                 break
             controller.send_command("exit", wait_after=1.2)
         self.append_log("[✓] Session disconnection sequence completed.\n")
+
+    def _detect_session_state(self, controller):
         """
         Inspects the very latest active prompt line in the PuTTY terminal to determine exact session state:
         - 'router_cli'     : inside branch router CLI prompt (e.g. admin@BRANCH-cli>)
