@@ -112,38 +112,14 @@ def parse_ticket_email(raw_text):
         if m_tkt_label:
             info["ticket_number"] = m_tkt_label.group(1).strip()
 
-    # 2. Extract other standard labeled fields
-    patterns = {
-        "location": r"LOCATION\s*[\t:]*\s*([^\r\n]+)",
-        "configuration_item": r"CONFIGURATION\s*ITEM\s*[\t:]*\s*([^\r\n]+)",
-        "title": r"TITLE\s*[\t:]*\s*([^\r\n]+)",
-        "priority": r"PRIORITY\s*[\t:]*\s*([^\r\n]+)",
-        "circuit_id": r"ISP\s*CIRCUIT\s*ID\s*[\t:]*\s*([^\r\n]+)",
-        "created_date": r"CREATED\s*DATE\s*[\t:]*\s*([^\r\n]+)",
-        "alarm_start_date": r"ALARM\s*START\s*DATE\s*[\t:]*\s*([^\r\n]+)",
-        "assigned_to": r"ASSIGN\s*TO\s*[\t:]*\s*([^\r\n]+)"
-    }
-
-    for key, pat in patterns.items():
-        m = re.search(pat, raw_text, re.IGNORECASE)
-        if m:
-            info[key] = m.group(1).strip()
-
-    # ISP Circuit ID pattern detection (e.g. 091AHME6230A0137347)
-    if not info["circuit_id"]:
-        m_isp_cid = re.search(r"\b(\d{3}[A-Za-z]{4}\d{4}[A-Za-z0-9]+)\b", raw_text)
-        if m_isp_cid:
-            info["circuit_id"] = m_isp_cid.group(1).strip()
-
     # Direct Configuration Item or Pattern Match: -HOST||CIRCUIT or HOST||CIRCUIT
+    # Example: 1391-NSKDEOLALI-NASHIK-R2||TTSL-MPLS1-MB
     m_pipe = re.search(r"([A-Za-z0-9_-]+)\s*\|\|\s*([A-Za-z0-9_-]+)", raw_text)
     if m_pipe:
         cand_host = m_pipe.group(1).lstrip("-").strip()
         cand_circ = m_pipe.group(2).strip()
-        if not info["hostname"]:
-            info["hostname"] = cand_host
-        if not info["circuit"]:
-            info["circuit"] = cand_circ
+        info["hostname"] = cand_host
+        info["circuit"] = cand_circ
 
     # NMS Alert format: "SD-WAN Datapath Down from <SOURCE_DC> to <TARGET_ROUTER>/<CIRCUIT>"
     # Example: "SD-WAN Datapath Down from VC-RBI-GRP1-02-PDC/PGCIL-MPLS-RBI to IFT-RBI-3041-AHMBRF-R1/PGCIL-MPLS2-RBI"
@@ -157,6 +133,25 @@ def parse_ticket_email(raw_text):
             info["hostname"] = m_sdwan_path.group(1).strip()
         if not info["circuit"]:
             info["circuit"] = m_sdwan_path.group(2).strip()
+
+    # 2. Extract standard labeled fields
+    patterns = {
+        "location": r"Location\s*[\t:]*\s*([A-Za-z0-9_ -]+)",
+        "configuration_item": r"Configuration\s*Item\s*[\t:]*\s*([^\r\n]+)",
+        "title": r"Title\s*\*?\s*[\t:]*\s*([^\r\n]+)",
+        "priority": r"Priority\s*\*?\s*[\t:]*\s*([^\r\n]+)",
+        "circuit_id": r"ISP\s*Circuit\s*ID\s*[\t:]*\s*([^\r\n]+)",
+        "created_date": r"Creation\s*Date\s*&\s*Time\s*\*?\s*[\t:]*\s*([^\r\n]+)",
+        "alarm_start_date": r"Alarm\s*Start\s*Date\s*(?:Time)?\s*[\t:]*\s*([0-9-]+\s+[0-9:]+)",
+        "assigned_to": r"Assign\s*To\s*[\t:]*\s*([^\r\n]+)"
+    }
+
+    for key, pat in patterns.items():
+        m = re.search(pat, raw_text, re.IGNORECASE)
+        if m:
+            val = m.group(1).strip()
+            if val and val != "* :" and val != ":" and not info[key]:
+                info[key] = val
 
     # Link Type field: "Link Type :- PGCIL-MPLS2-RBI" or "Link Type : PGCIL-MPLS2-RBI"
     m_link_type = re.search(r"Link\s*Type\s*[:-]+\s*([A-Za-z0-9_-]+)", raw_text, re.IGNORECASE)
@@ -181,10 +176,10 @@ def parse_ticket_email(raw_text):
     if m_start_time and not info["alarm_start_date"]:
         info["alarm_start_date"] = m_start_time.group(1).strip()
 
-    # Derived extraction from Configuration Item
-    if info["configuration_item"]:
+    # Derived extraction from Configuration Item (only if contains || and not UI button text)
+    if info["configuration_item"] and "||" in info["configuration_item"]:
         parts = [p.strip() for p in info["configuration_item"].split("||")]
-        if len(parts) >= 1 and parts[0]:
+        if len(parts) >= 1 and parts[0] and "View Related" not in parts[0]:
             info["hostname"] = parts[0]
         if len(parts) >= 2 and parts[1]:
             info["circuit"] = parts[1]
@@ -877,8 +872,9 @@ class TicketAnalyzerFrame(ttk.Frame):
                 self.command_outputs["uptime"] = self._clean_cli_output(out, cmd)
                 self.append_log(f"[✓] Captured System Uptime.\n")
 
-            # Exit router session back to Director
-            self.append_log("\n[*] Exiting router CLI back to Director...\n")
+            # Exit router session cleanly (write exit 3 times to ensure router CLI and shell are exited safely)
+            self.append_log("\n[*] Safely disconnecting router session (3x exit)...\n")
+            controller.send_command("exit", wait_after=1.5)
             controller.send_command("exit", wait_after=1.5)
             controller.send_command("exit", wait_after=2.0)
 
