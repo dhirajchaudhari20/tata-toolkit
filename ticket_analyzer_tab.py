@@ -7,11 +7,19 @@ Purpose:
   Automated Ticket / Alert Analyzer & Diagnostic Dispatcher.
   1. Parses incoming NMS alerts & ticket emails (e.g. infinet_nms_alerts@rbi.org.in).
   2. Extracts Ticket Number, Location, Hostname, Circuit, Transport VR, Peer IP, Circuit ID.
-  3. Automatically connects to Versa Director via open PuTTY / ARCON PAM Terminal session.
+  3. Connects to Versa Director via open PuTTY / ARCON PAM Terminal session.
   4. Discovers Management IP of the target Branch router and SSH logs in.
-  5. Executes Port Status checks ('show interfaces brief') & Ping diagnostics ('ping <peer_ip>').
-  6. Captures live terminal output/logs.
-  7. Generates an executive NOC Customer Update Message with logs, ready for 1-click copy-paste.
+  5. Selectively runs NOC verification commands based on checkboxes:
+     - [x] Port / Interface Status ('show interfaces brief')
+     - [x] Specific Transport VR BGP ('show bgp neighbor brief <VR>')
+     - [x] All BGP Neighbors ('show bgp neighbor brief')
+     - [x] BGP Alarms ('show alarms last-n 30 | match bgp')
+     - [x] Peer IP Alarms ('show alarms last-n 30 | match <peer_ip>')
+     - [x] VNI Interface Alarms ('show alarms last-n 30 | match vni')
+     - [x] Rapid Ping Diagnostics ('ping <peer_ip> source <source_ip> routing-instance <VR>')
+     - [x] System & Service Uptime ('show system uptime')
+  6. Captures live terminal output/logs into both Console Log and dedicated output sections.
+  7. Formats an executive, professional NOC Customer Update Message ready for 1-click copy-paste.
 ====================================================================================================
 """
 
@@ -168,7 +176,7 @@ def calculate_peer_source_ip(peer_ip):
 
 class TicketAnalyzerFrame(ttk.Frame):
     """
-    NOC Ticket / Alert Incident Diagnostics Frame.
+    NOC Ticket / Alert Incident Diagnostics Frame with selective command checkboxes.
     """
     def __init__(self, parent, root=None, parent_gui=None):
         super().__init__(parent)
@@ -178,6 +186,7 @@ class TicketAnalyzerFrame(ttk.Frame):
         self.is_running = False
         self.stop_event = threading.Event()
         self.parsed_data = {}
+        self.command_outputs = {}
 
         self._build_ui()
 
@@ -199,16 +208,104 @@ class TicketAnalyzerFrame(ttk.Frame):
         ttk.Entry(top_bar, textvariable=self.director_pass_var, width=15, show="*").grid(row=0, column=5, padx=4, sticky="w")
 
         ttk.Label(top_bar, text="Ping Count:", font=("Segoe UI", 9)).grid(row=0, column=6, padx=(12, 4), sticky="w")
-        self.ping_count_var = tk.IntVar(value=100)
-        ttk.Spinbox(top_bar, from_=10, to=500, increment=20, textvariable=self.ping_count_var, width=6).grid(row=0, column=7, padx=4, sticky="w")
+        self.ping_count_var = tk.IntVar(value=500)
+        ttk.Spinbox(top_bar, from_=10, to=1000, increment=50, textvariable=self.ping_count_var, width=6).grid(row=0, column=7, padx=4, sticky="w")
 
-        # ── 2. Action Button Bar (Packed Bottom-First to Guarantee Visibility) ──
+        # ── 2. Diagnostic Command Selection (Checkboxes) ──
+        cmd_box = ttk.LabelFrame(self, text=" 🔍 Diagnostic Commands to Execute (Check All or Select Specific) ", padding=6)
+        cmd_box.pack(side="top", fill="x", padx=6, pady=(2, 2))
+
+        # Checkbox state variables
+        self.chk_iface_var     = tk.BooleanVar(value=True)   # show interfaces brief
+        self.chk_bgp_vr_var    = tk.BooleanVar(value=True)   # show bgp neighbor brief <VR>
+        self.chk_bgp_all_var   = tk.BooleanVar(value=True)   # show bgp neighbor brief
+        self.chk_alarm_bgp_var = tk.BooleanVar(value=True)   # show alarms last-n 30 | match bgp
+        self.chk_alarm_peer_var= tk.BooleanVar(value=True)   # show alarms last-n 30 | match <peer_ip>
+        self.chk_alarm_vni_var = tk.BooleanVar(value=True)   # show alarms last-n 30 | match vni
+        self.chk_ping_var      = tk.BooleanVar(value=True)   # ping <peer> source <src> routing-instance <vr>
+        self.chk_uptime_var    = tk.BooleanVar(value=True)   # show system uptime
+
+        # Row 0: Quick preset buttons
+        preset_row = tk.Frame(cmd_box, bg="#f8f9fa")
+        preset_row.pack(fill="x", pady=(0, 4))
+
+        tk.Label(preset_row, text="Quick Select:", font=("Segoe UI", 8, "bold"), bg="#f8f9fa", fg="#475569").pack(side="left", padx=(2, 6))
+
+        tk.Button(
+            preset_row,
+            text="✅ Select All",
+            font=("Segoe UI", 8, "bold"),
+            bg="#e0f2fe",
+            fg="#0369a1",
+            relief="flat",
+            cursor="hand2",
+            padx=8,
+            pady=1,
+            command=self._select_all_commands
+        ).pack(side="left", padx=2)
+
+        tk.Button(
+            preset_row,
+            text="⚡ Ping Only",
+            font=("Segoe UI", 8, "bold"),
+            bg="#f1f5f9",
+            fg="#334155",
+            relief="flat",
+            cursor="hand2",
+            padx=8,
+            pady=1,
+            command=self._select_ping_only
+        ).pack(side="left", padx=2)
+
+        tk.Button(
+            preset_row,
+            text="📡 BGP & Alarms Only",
+            font=("Segoe UI", 8, "bold"),
+            bg="#f1f5f9",
+            fg="#334155",
+            relief="flat",
+            cursor="hand2",
+            padx=8,
+            pady=1,
+            command=self._select_bgp_alarms_only
+        ).pack(side="left", padx=2)
+
+        tk.Button(
+            preset_row,
+            text="❌ Deselect All",
+            font=("Segoe UI", 8),
+            bg="#f1f5f9",
+            fg="#64748b",
+            relief="flat",
+            cursor="hand2",
+            padx=8,
+            pady=1,
+            command=self._deselect_all_commands
+        ).pack(side="left", padx=2)
+
+        # Checkboxes Grid (2 rows x 4 columns)
+        chk_grid = tk.Frame(cmd_box)
+        chk_grid.pack(fill="x")
+
+        # Row 1
+        ttk.Checkbutton(chk_grid, text="1. Port Status (show interfaces brief)", variable=self.chk_iface_var).grid(row=0, column=0, sticky="w", padx=6, pady=2)
+        ttk.Checkbutton(chk_grid, text="2. Specific VR BGP (show bgp neighbor brief <VR>)", variable=self.chk_bgp_vr_var).grid(row=0, column=1, sticky="w", padx=6, pady=2)
+        ttk.Checkbutton(chk_grid, text="3. All BGP Neighbors (show bgp neighbor brief)", variable=self.chk_bgp_all_var).grid(row=0, column=2, sticky="w", padx=6, pady=2)
+        ttk.Checkbutton(chk_grid, text="4. BGP Alarms (show alarms last-n 30 | match bgp)", variable=self.chk_alarm_bgp_var).grid(row=0, column=3, sticky="w", padx=6, pady=2)
+
+        # Row 2
+        ttk.Checkbutton(chk_grid, text="5. Peer IP Alarms (match <peer_ip>)", variable=self.chk_alarm_peer_var).grid(row=1, column=0, sticky="w", padx=6, pady=2)
+        ttk.Checkbutton(chk_grid, text="6. VNI Alarms (match vni)", variable=self.chk_alarm_vni_var).grid(row=1, column=1, sticky="w", padx=6, pady=2)
+        ttk.Checkbutton(chk_grid, text="7. Rapid Ping Test (peer_ip / source_ip)", variable=self.chk_ping_var).grid(row=1, column=2, sticky="w", padx=6, pady=2)
+        ttk.Checkbutton(chk_grid, text="8. System Uptime (show system uptime)", variable=self.chk_uptime_var).grid(row=1, column=3, sticky="w", padx=6, pady=2)
+
+        # ── 3. Action Button Bar (Packed Bottom-First to Guarantee Visibility) ──
         btn_bar = tk.Frame(self, bg="#f8f9fa", pady=4)
         btn_bar.pack(side="bottom", fill="x", padx=6, pady=(2, 4))
 
         self.start_btn = tk.Button(
             btn_bar,
-            text="▶  Analyze & Run Auto-Diagnostics",
+            text="▶  Analyze & Run Selected Diagnostics",
             font=("Segoe UI", 10, "bold"),
             bg="#16a34a",
             fg="white",
@@ -315,10 +412,10 @@ class TicketAnalyzerFrame(ttk.Frame):
         prog_info_box = tk.Frame(prog_bar_frame, bg="#f8f9fa")
         prog_info_box.pack(fill="x")
 
-        self.status_var = tk.StringVar(value="Status: Ready | Paste ticket email text and click 'Analyze & Run Auto-Diagnostics'")
+        self.status_var = tk.StringVar(value="Status: Ready | Paste ticket email text, select commands, and click 'Run Selected Diagnostics'")
         ttk.Label(prog_info_box, textvariable=self.status_var, font=("Segoe UI", 9)).pack(side="left")
 
-        # ── 3. Main Workspace Split (PanedWindow) ──
+        # ── 4. Main Workspace Split (PanedWindow) ──
         paned = ttk.PanedWindow(self, orient="horizontal")
         paned.pack(side="top", fill="both", expand=True, padx=6, pady=2)
 
@@ -343,7 +440,7 @@ class TicketAnalyzerFrame(ttk.Frame):
             command=self.paste_from_clipboard
         ).pack(side="right")
 
-        self.ticket_input_text = tk.Text(left_box, height=12, font=("Consolas", 9), wrap="word", relief="solid", bd=1)
+        self.ticket_input_text = tk.Text(left_box, height=10, font=("Consolas", 9), wrap="word", relief="solid", bd=1)
         self.ticket_input_text.pack(fill="both", expand=True, pady=(0, 4))
         self.ticket_input_text.bind("<KeyRelease>", lambda e: self.on_text_changed())
 
@@ -373,7 +470,7 @@ class TicketAnalyzerFrame(ttk.Frame):
 
         msg_top_bar = tk.Frame(self.tab_msg, bg="#f1f5f9", pady=3, padx=4)
         msg_top_bar.pack(fill="x", pady=(0, 4))
-        tk.Label(msg_top_bar, text="Ready-to-paste customer update formatted with port & ping logs:", font=("Segoe UI", 9, "bold"), bg="#f1f5f9", fg="#334155").pack(side="left")
+        tk.Label(msg_top_bar, text="Ready-to-paste customer update formatted with all executed logs:", font=("Segoe UI", 9, "bold"), bg="#f1f5f9", fg="#334155").pack(side="left")
         
         tk.Button(
             msg_top_bar,
@@ -408,6 +505,47 @@ class TicketAnalyzerFrame(ttk.Frame):
         lbl_val = tk.Label(parent, text="--", font=("Segoe UI", 8), fg="#0369a1", anchor="w")
         lbl_val.grid(row=row_idx, column=1, sticky="w", padx=4, pady=1)
         return lbl_val
+
+    # ── Preset Checkbox Selectors ──
+    def _select_all_commands(self):
+        self.chk_iface_var.set(True)
+        self.chk_bgp_vr_var.set(True)
+        self.chk_bgp_all_var.set(True)
+        self.chk_alarm_bgp_var.set(True)
+        self.chk_alarm_peer_var.set(True)
+        self.chk_alarm_vni_var.set(True)
+        self.chk_ping_var.set(True)
+        self.chk_uptime_var.set(True)
+
+    def _select_ping_only(self):
+        self.chk_iface_var.set(False)
+        self.chk_bgp_vr_var.set(False)
+        self.chk_bgp_all_var.set(False)
+        self.chk_alarm_bgp_var.set(False)
+        self.chk_alarm_peer_var.set(False)
+        self.chk_alarm_vni_var.set(False)
+        self.chk_ping_var.set(True)
+        self.chk_uptime_var.set(False)
+
+    def _select_bgp_alarms_only(self):
+        self.chk_iface_var.set(False)
+        self.chk_bgp_vr_var.set(True)
+        self.chk_bgp_all_var.set(True)
+        self.chk_alarm_bgp_var.set(True)
+        self.chk_alarm_peer_var.set(True)
+        self.chk_alarm_vni_var.set(True)
+        self.chk_ping_var.set(False)
+        self.chk_uptime_var.set(False)
+
+    def _deselect_all_commands(self):
+        self.chk_iface_var.set(False)
+        self.chk_bgp_vr_var.set(False)
+        self.chk_bgp_all_var.set(False)
+        self.chk_alarm_bgp_var.set(False)
+        self.chk_alarm_peer_var.set(False)
+        self.chk_alarm_vni_var.set(False)
+        self.chk_ping_var.set(False)
+        self.chk_uptime_var.set(False)
 
     def on_text_changed(self):
         text = self.ticket_input_text.get("1.0", tk.END).strip()
@@ -447,6 +585,7 @@ class TicketAnalyzerFrame(ttk.Frame):
         self.msg_text.delete("1.0", tk.END)
         self.log_text.delete("1.0", tk.END)
         self.parsed_data = {}
+        self.command_outputs = {}
         self._update_parsed_labels()
         self.status_var.set("Status: Cleared | Ready")
 
@@ -498,8 +637,24 @@ class TicketAnalyzerFrame(ttk.Frame):
             messagebox.showerror("Hostname Not Found", "Could not extract Target Router Hostname from the ticket text.\nPlease verify the ticket contents.")
             return
 
+        # Check if at least one diagnostic is selected
+        any_selected = any([
+            self.chk_iface_var.get(),
+            self.chk_bgp_vr_var.get(),
+            self.chk_bgp_all_var.get(),
+            self.chk_alarm_bgp_var.get(),
+            self.chk_alarm_peer_var.get(),
+            self.chk_alarm_vni_var.get(),
+            self.chk_ping_var.get(),
+            self.chk_uptime_var.get()
+        ])
+        if not any_selected:
+            messagebox.showwarning("No Commands Selected", "Please select at least one diagnostic command checkbox to run.")
+            return
+
         self.is_running = True
         self.stop_event.clear()
+        self.command_outputs = {}
 
         self.start_btn.config(state="disabled")
         self.stop_btn.config(state="normal")
@@ -522,7 +677,7 @@ class TicketAnalyzerFrame(ttk.Frame):
         self.append_log(f"[*] Transport VR  : {self.parsed_data.get('transport_vr') or 'Auto-Detect'}\n")
         self.append_log(f"{'='*75}\n\n")
 
-        # Run automation worker in a background thread
+        # Run automation worker in background thread
         threading.Thread(target=self._run_diagnostics_worker, daemon=True).start()
 
     def stop_investigation(self):
@@ -562,70 +717,117 @@ class TicketAnalyzerFrame(ttk.Frame):
                 self._finish_investigation(success=False)
                 return
 
-            # 2. Check Port Status ('show interfaces brief')
-            self.append_log(f"\n[*] [Step 1/2] Checking Interface & Port Status (show interfaces brief)...\n")
-            controller.send_command("show interfaces brief", wait_after=1.5)
-            iface_out = self._wait_prompt(controller, cmd="show interfaces brief", max_timeout=25.0)
-
-            # Filter relevant interface logs
-            port_logs = self._extract_relevant_interfaces(iface_out)
-            self.append_log(f"[✓] Interface Status Captured:\n{port_logs}\n")
-
-            if self.stop_event.is_set():
-                self._finish_investigation(success=False)
-                return
-
-            # 3. Check Ping Diagnostics
+            # Discover peer and VR if missing before running checks
             peer_ip = self.parsed_data.get("peer_ip")
             transport_vr = self.parsed_data.get("transport_vr")
             source_ip = self.parsed_data.get("local_source_ip")
             ping_cnt = self.ping_count_var.get()
 
-            # If Peer IP or VR wasn't in ticket, attempt discovery from BGP
             if not peer_ip or not transport_vr:
                 self.append_log("[*] Inquiring 'show bgp neighbor brief' to discover active peer and VR...\n")
                 controller.send_command("show bgp neighbor brief", wait_after=1.5)
-                bgp_out = self._wait_prompt(controller, cmd="show bgp neighbor brief", max_timeout=20.0)
-                disc_peer, disc_vr = self._discover_peer_from_bgp(bgp_out)
+                bgp_disc_raw = self._wait_prompt(controller, cmd="show bgp neighbor brief", max_timeout=20.0)
+                disc_peer, disc_vr = self._discover_peer_from_bgp(bgp_disc_raw)
                 if not peer_ip and disc_peer:
                     peer_ip = disc_peer
+                    self.parsed_data["peer_ip"] = peer_ip
                     source_ip = calculate_peer_source_ip(peer_ip)
+                    self.parsed_data["local_source_ip"] = source_ip
                 if not transport_vr and disc_vr:
                     transport_vr = disc_vr
+                    self.parsed_data["transport_vr"] = transport_vr
+                self.root.after(0, self._update_parsed_labels)
 
-            ping_logs = ""
-            ping_summary_stats = {"tx": ping_cnt, "rx": 0, "loss": 100.0, "avg_rtt": 0.0}
+            # ── Run Selected Commands in Sequence ──
 
-            if peer_ip:
-                self.append_log(f"\n[*] [Step 2/2] Executing Ping to Peer IP {peer_ip}...\n")
+            # Command 1: show interfaces brief
+            if self.chk_iface_var.get() and not self.stop_event.is_set():
+                self.append_log(f"\n[*] [1/8] Executing: show interfaces brief\n")
+                controller.send_command("show interfaces brief", wait_after=1.5)
+                out = self._wait_prompt(controller, cmd="show interfaces brief", max_timeout=25.0)
+                self.command_outputs["interfaces_brief"] = self._clean_cli_output(out, "show interfaces brief")
+                self.append_log(f"[✓] Captured Interfaces Brief.\n")
+
+            # Command 2: show bgp neighbor brief <VR>
+            if self.chk_bgp_vr_var.get() and transport_vr and not self.stop_event.is_set():
+                cmd = f"show bgp neighbor brief {transport_vr}"
+                self.append_log(f"\n[*] [2/8] Executing: {cmd}\n")
+                controller.send_command(cmd, wait_after=1.5)
+                out = self._wait_prompt(controller, cmd=cmd, max_timeout=20.0)
+                self.command_outputs["bgp_vr"] = self._clean_cli_output(out, cmd)
+                self.append_log(f"[✓] Captured BGP Neighbor for {transport_vr}.\n")
+
+            # Command 3: show bgp neighbor brief (All)
+            if self.chk_bgp_all_var.get() and not self.stop_event.is_set():
+                self.append_log(f"\n[*] [3/8] Executing: show bgp neighbor brief\n")
+                controller.send_command("show bgp neighbor brief", wait_after=1.5)
+                out = self._wait_prompt(controller, cmd="show bgp neighbor brief", max_timeout=20.0)
+                self.command_outputs["bgp_all"] = self._clean_cli_output(out, "show bgp neighbor brief")
+                self.append_log(f"[✓] Captured All BGP Neighbors.\n")
+
+            # Command 4: show alarms last-n 30 | match bgp
+            if self.chk_alarm_bgp_var.get() and not self.stop_event.is_set():
+                cmd = "show alarms last-n 30 | match bgp"
+                self.append_log(f"\n[*] [4/8] Executing: {cmd}\n")
+                controller.send_command(cmd, wait_after=1.5)
+                out = self._wait_prompt(controller, cmd=cmd, max_timeout=20.0)
+                self.command_outputs["alarms_bgp"] = self._clean_cli_output(out, cmd)
+                self.append_log(f"[✓] Captured BGP Alarms.\n")
+
+            # Command 5: show alarms last-n 30 | match <peer_ip>
+            if self.chk_alarm_peer_var.get() and peer_ip and not self.stop_event.is_set():
+                cmd = f"show alarms last-n 30 | match {peer_ip}"
+                self.append_log(f"\n[*] [5/8] Executing: {cmd}\n")
+                controller.send_command(cmd, wait_after=1.5)
+                out = self._wait_prompt(controller, cmd=cmd, max_timeout=20.0)
+                self.command_outputs["alarms_peer"] = self._clean_cli_output(out, cmd)
+                self.append_log(f"[✓] Captured Alarms for Peer {peer_ip}.\n")
+
+            # Command 6: show alarms last-n 30 | match vni
+            if self.chk_alarm_vni_var.get() and not self.stop_event.is_set():
+                cmd = "show alarms last-n 30 | match vni"
+                self.append_log(f"\n[*] [6/8] Executing: {cmd}\n")
+                controller.send_command(cmd, wait_after=1.5)
+                out = self._wait_prompt(controller, cmd=cmd, max_timeout=20.0)
+                self.command_outputs["alarms_vni"] = self._clean_cli_output(out, cmd)
+                self.append_log(f"[✓] Captured VNI Interface Alarms.\n")
+
+            # Command 7: Rapid Ping Diagnostics
+            ping_stats = {"tx": ping_cnt, "rx": 0, "loss": 100.0, "avg_rtt": 0.0}
+            if self.chk_ping_var.get() and peer_ip and not self.stop_event.is_set():
                 if transport_vr and source_ip:
-                    cmd_ping = f"ping {peer_ip} source {source_ip} routing-instance {transport_vr} rapid enable count {ping_cnt} packet-size 1472 df-bit enable"
+                    cmd_ping = f"ping {peer_ip} source {source_ip} routing-instance {transport_vr} rapid enable count {ping_cnt}"
                 elif transport_vr:
-                    cmd_ping = f"ping {peer_ip} routing-instance {transport_vr} rapid enable count {ping_cnt} packet-size 1472 df-bit enable"
+                    cmd_ping = f"ping {peer_ip} routing-instance {transport_vr} rapid enable count {ping_cnt}"
                 else:
-                    cmd_ping = f"ping {peer_ip} rapid enable count {ping_cnt} packet-size 1472 df-bit enable"
+                    cmd_ping = f"ping {peer_ip} rapid enable count {ping_cnt}"
 
-                self.append_log(f"    cmd: {cmd_ping}\n")
+                self.append_log(f"\n[*] [7/8] Executing: {cmd_ping}\n")
                 controller.send_command(cmd_ping, wait_after=1.5)
                 ping_raw = self._wait_prompt(controller, cmd="ping", max_timeout=40.0)
-                ping_logs = self._extract_ping_block(ping_raw)
-                ping_summary_stats = self._parse_ping(ping_raw)
-                self.append_log(f"[✓] Ping Captured: Loss={ping_summary_stats['loss']}%, Avg RTT={ping_summary_stats['avg_rtt']}ms\n")
-            else:
-                self.append_log("[!] No peer IP found to ping. Skipping ping step.\n")
-                ping_logs = "No destination Peer IP was identified in ticket or BGP output."
+                self.command_outputs["ping"] = self._extract_ping_block(ping_raw)
+                ping_stats = self._parse_ping(ping_raw)
+                self.append_log(f"[✓] Ping Captured: Loss={ping_stats['loss']}%, Avg RTT={ping_stats['avg_rtt']}ms\n")
 
-            # 4. Exit router session back to Director
+            # Command 8: show system uptime
+            if self.chk_uptime_var.get() and not self.stop_event.is_set():
+                cmd = "show system uptime"
+                self.append_log(f"\n[*] [8/8] Executing: {cmd}\n")
+                controller.send_command(cmd, wait_after=1.5)
+                out = self._wait_prompt(controller, cmd=cmd, max_timeout=15.0)
+                self.command_outputs["uptime"] = self._clean_cli_output(out, cmd)
+                self.append_log(f"[✓] Captured System Uptime.\n")
+
+            # Exit router session back to Director
             self.append_log("\n[*] Exiting router CLI back to Director...\n")
             controller.send_command("exit", wait_after=1.5)
             controller.send_command("exit", wait_after=2.0)
 
-            # 5. Format Executive NOC Customer Update Message
+            # Generate Executive Customer Update Message
             customer_msg = self._generate_customer_message(
                 ticket_info=self.parsed_data,
-                port_logs=port_logs,
-                ping_logs=ping_logs,
-                ping_stats=ping_summary_stats
+                outputs=self.command_outputs,
+                ping_stats=ping_stats
             )
 
             # Present message in UI
@@ -729,22 +931,21 @@ class TicketAnalyzerFrame(ttk.Frame):
                     return out
         return controller.copy_terminal_output() or ""
 
-    def _extract_relevant_interfaces(self, raw_iface_output):
-        """Extracts readable port status block from show interfaces brief output."""
-        if not raw_iface_output:
-            return "No interface output captured."
-        idx = raw_iface_output.rfind("show interfaces brief")
-        snippet = raw_iface_output[idx:] if idx != -1 else raw_iface_output
+    def _clean_cli_output(self, raw_output, cmd_str):
+        """Extracts clean section from raw terminal output between command and prompt."""
+        if not raw_output:
+            return "No output captured."
+        idx = raw_output.rfind(cmd_str)
+        snippet = raw_output[idx:] if idx != -1 else raw_output
         lines = snippet.splitlines()
-        # Keep command through next prompt
-        clean_lines = []
+        clean = []
         for line in lines:
             if "[error]" in line:
                 continue
-            clean_lines.append(line)
-            if line.strip().endswith("-cli>") and len(clean_lines) > 5:
+            clean.append(line)
+            if line.strip().endswith("-cli>") and len(clean) > 3:
                 break
-        return "\n".join(clean_lines[:40]).strip()
+        return "\n".join(clean[:50]).strip()
 
     def _extract_ping_block(self, raw_ping_output):
         """Extracts the command and summary lines from ping output."""
@@ -759,7 +960,7 @@ class TicketAnalyzerFrame(ttk.Frame):
             if "rtt min/avg/max" in line or line.strip().endswith("-cli>"):
                 if len(clean) > 3:
                     break
-        return "\n".join(clean[:20]).strip()
+        return "\n".join(clean[:25]).strip()
 
     def _discover_peer_from_bgp(self, bgp_output):
         """Fallback to discover first WAN peer IP and Transport VR from show bgp neighbor brief."""
@@ -794,37 +995,41 @@ class TicketAnalyzerFrame(ttk.Frame):
             stats["avg_rtt"] = float(all_rtt[-1])
         return stats
 
-    def _generate_customer_message(self, ticket_info, port_logs, ping_logs, ping_stats):
+    def _generate_customer_message(self, ticket_info, outputs, ping_stats):
         """
-        Creates professional customer communication text.
+        Creates professional customer communication text containing all executed diagnostic blocks.
         """
         tkt = ticket_info.get("ticket_number") or "N/A"
         host = ticket_info.get("hostname") or "Target Router"
-        circuit = ticket_info.get("circuit") or "MPLS Circuit"
+        circuit = ticket_info.get("circuit") or "Access Circuit"
         cid = ticket_info.get("circuit_id") or "N/A"
         peer = ticket_info.get("peer_ip") or "N/A"
         loc = ticket_info.get("location") or "N/A"
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        loss = ping_stats.get("loss", 100.0)
+        loss = ping_stats.get("loss", 0.0 if "ping" in outputs else None)
         avg_rtt = ping_stats.get("avg_rtt", 0.0)
 
-        # Port status evaluation
-        port_down = True if ("down" in port_logs.lower() or "admin down" in port_logs.lower() or loss == 100.0) else False
+        # Port status analysis
+        iface_text = outputs.get("interfaces_brief", "")
+        port_down = ("down" in iface_text.lower() or "admin down" in iface_text.lower()) if iface_text else False
 
         msg = []
         msg.append(f"Dear Customer,\n")
         msg.append(f"With reference to Ticket #{tkt} regarding Site '{host}' ({loc}):\n")
-        msg.append(f"Our NOC Network Operations team has investigated the incident on the Versa SD-WAN appliance.")
-        
-        if port_down and loss == 100.0:
-            msg.append(f"We observed that the access port / WAN peer session for circuit '{circuit}' is currently DOWN with 100% packet loss.")
-        elif loss > 0.0:
-            msg.append(f"We observed packet degradation on circuit '{circuit}' ({loss:.1f}% packet loss, Latency: {avg_rtt:.2f} ms).")
-        else:
-            msg.append(f"We observed that the port and WAN session for circuit '{circuit}' are currently reachable (0% packet loss, Latency: {avg_rtt:.2f} ms).")
+        msg.append(f"Our NOC Network Operations team has completed in-depth diagnostics on the Versa SD-WAN appliance.")
 
-        msg.append(f"\n--- Incident & Circuit Details ---")
+        # Status opening
+        if port_down and loss == 100.0:
+            msg.append(f"We observed that the physical WAN access port / peer session for '{circuit}' is DOWN with 100% packet loss.")
+        elif loss is not None and loss > 0.0:
+            msg.append(f"We observed packet loss on circuit '{circuit}' ({loss:.1f}% packet loss, Latency: {avg_rtt:.2f} ms).")
+        elif loss == 0.0:
+            msg.append(f"We observed that the WAN access port and peer session for '{circuit}' are currently REACHABLE (0% packet loss, Latency: {avg_rtt:.2f} ms).")
+        else:
+            msg.append(f"Please find the live router status and session diagnostics below.")
+
+        msg.append(f"\n--- Incident & Circuit Parameters ---")
         msg.append(f"• Ticket Number    : {tkt}")
         msg.append(f"• Router Hostname  : {host}")
         msg.append(f"• ISP Circuit ID   : {cid}")
@@ -832,14 +1037,48 @@ class TicketAnalyzerFrame(ttk.Frame):
         msg.append(f"• Peer Destination : {peer}")
         msg.append(f"• Diagnostic Time  : {now_str}")
 
-        msg.append(f"\n--- [1] Live Port & Interface Status Output ---")
-        msg.append(port_logs if port_logs else "No port status output recorded.")
+        # Section 1: Port Status
+        if "interfaces_brief" in outputs:
+            msg.append(f"\n--- [1] Port & Interface Status (show interfaces brief) ---")
+            msg.append(outputs["interfaces_brief"])
 
-        msg.append(f"\n--- [2] Live Ping Diagnostics Output ---")
-        msg.append(ping_logs if ping_logs else "No ping output recorded.")
+        # Section 2: Specific Transport VR BGP
+        if "bgp_vr" in outputs:
+            msg.append(f"\n--- [2] Specific Transport VR BGP Status ---")
+            msg.append(outputs["bgp_vr"])
 
-        msg.append(f"\nSummary Verdict: Packet Loss: {loss:.1f}%, Avg RTT: {avg_rtt:.2f} ms.")
-        msg.append(f"Our engineering team is actively coordinating with the service provider for restoration. We will keep you updated.\n")
+        # Section 3: All BGP Neighbors
+        if "bgp_all" in outputs:
+            msg.append(f"\n--- [3] All BGP Neighbors Status ---")
+            msg.append(outputs["bgp_all"])
+
+        # Section 4: BGP Alarms
+        if "alarms_bgp" in outputs:
+            msg.append(f"\n--- [4] BGP State Change Alarms (show alarms last-n 30 | match bgp) ---")
+            msg.append(outputs["alarms_bgp"])
+
+        # Section 5: Peer IP Alarms
+        if "alarms_peer" in outputs:
+            msg.append(f"\n--- [5] Peer IP Transition Alarms (match {peer}) ---")
+            msg.append(outputs["alarms_peer"])
+
+        # Section 6: VNI Interface Alarms
+        if "alarms_vni" in outputs:
+            msg.append(f"\n--- [6] VNI Interface Alarms (match vni) ---")
+            msg.append(outputs["alarms_vni"])
+
+        # Section 7: Rapid Ping Diagnostics
+        if "ping" in outputs:
+            msg.append(f"\n--- [7] Rapid Ping Diagnostics Output ---")
+            msg.append(outputs["ping"])
+            msg.append(f"Summary Verdict: Packet Loss: {loss:.1f}%, Avg RTT: {avg_rtt:.2f} ms.")
+
+        # Section 8: System & Service Uptime
+        if "uptime" in outputs:
+            msg.append(f"\n--- [8] Router System & Service Uptime ---")
+            msg.append(outputs["uptime"])
+
+        msg.append(f"\nOur engineering team is actively monitoring the circuit. For any queries, please reply directly to this ticket.\n")
         msg.append(f"Warm Regards,\nTata Communications - NOC Network Operations")
 
         return "\n".join(msg)
@@ -862,5 +1101,5 @@ class TicketAnalyzerFrame(ttk.Frame):
             self.append_log(f"{'='*75}\n\n")
         else:
             err = f": {error_msg}" if error_msg else ""
-            self.root.after(0, lambda: self.status_var.set(f"Status: Investigation Halated{err}"))
+            self.root.after(0, lambda: self.status_var.set(f"Status: Investigation Halted{err}"))
             self.append_log(f"\n[!] Investigation halted{err}.\n")

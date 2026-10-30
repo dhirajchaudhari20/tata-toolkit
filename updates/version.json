@@ -1,10 +1,9 @@
 {
-    "latest_version": "1.0.2",
-    "release_date": "2026-10-28",
+    "latest_version": "1.0.1",
+    "release_date": "2026-10-30",
     "min_compatible_version": "1.0.0",
     "changelog": [
-        "v1.0.2: Section 3 DC-to-Branch Mesh Ping Matrix (Odd/Even Rule, First 4 Transport VRs) & PuTTY Workers up to 5 with Audit Command Selector",
-        "v1.0.1: Corporate Firewall Bypass — Packaged update container (.pkg) eliminating proxy .exe download blocks",
+        "v1.0.1: Versa Router Health Auditor, TTBS CID Checker, DC Mesh Ping Matrix, and Ticket/Alert Diagnostics with Selective Checks",
         "v1.0.0: Initial Release — Versa Router Health Auditor & CID Checker base"
     ],
     "package_file": "update.pkg"

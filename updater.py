@@ -25,7 +25,7 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
-CURRENT_VERSION = "1.0.2"
+CURRENT_VERSION = "1.0.1"
 CONFIG_FILE = os.path.join(os.getcwd(), "update_config.json")
 
 # ── GitHub Repository Configuration ─────────────────────────────────────────
