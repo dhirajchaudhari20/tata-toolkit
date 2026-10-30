@@ -921,11 +921,15 @@ class TicketAnalyzerFrame(ttk.Frame):
                 self.command_outputs["uptime"] = self._clean_cli_output(out, cmd)
                 self.append_log(f"[✓] Captured System Uptime.\n")
 
-            # Safely disconnect router session: write exit 3 times to return cleanly to shell/director
-            self.append_log("\n[*] Disconnecting router session (sending exit 3 times)...\n")
-            controller.send_command("exit", wait_after=1.5)
-            controller.send_command("exit", wait_after=1.5)
-            controller.send_command("exit", wait_after=2.0)
+            # Safely disconnect router session: exit router CLI -> router shell -> Director CLI -> Bastion mcpeuser
+            self.append_log("\n[*] Disconnecting all nested sessions back to Bastion mcpeuser...\n")
+            for _ in range(6):
+                out = controller.copy_terminal_output() or ""
+                last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
+                if "mcpeuser" in last_lines or "PU1PAMMCPSGW" in last_lines or "[mcpeuser" in last_lines:
+                    self.append_log("[✓] Confirmed back at Bastion prompt (mcpeuser).\n")
+                    break
+                controller.send_command("exit", wait_after=1.5)
             self.append_log("[✓] Session disconnection sequence completed.\n")
 
             # Generate Executive Customer Update Message
@@ -1031,15 +1035,18 @@ class TicketAnalyzerFrame(ttk.Frame):
 
     def _wait_prompt(self, controller, cmd=None, max_timeout=35.0, check_interval=0.4):
         start_t = time.time()
-        time.sleep(0.4)
+        time.sleep(0.5)
         while time.time() - start_t < max_timeout:
             if self.stop_event.is_set():
                 break
             time.sleep(check_interval)
             out = controller.copy_terminal_output() or ""
             if cmd and cmd in out:
-                lines = [l.strip() for l in out.strip().splitlines() if l.strip()]
-                if lines and any(l.endswith("-cli>") or "[ok]" in l for l in lines[-2:]):
+                idx = out.rfind(cmd)
+                after_cmd = out[idx + len(cmd):]
+                after_lines = [l.strip() for l in after_cmd.strip().splitlines() if l.strip()]
+                # Ensure the command has truly executed and reached a new prompt or [ok] AFTER the command text
+                if after_lines and any(l.endswith("-cli>") or "[ok]" in l or "[error]" in l for l in after_lines):
                     return out
         return controller.copy_terminal_output() or ""
 
