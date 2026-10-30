@@ -118,6 +118,57 @@ def parse_ticket_email(raw_text):
         if m:
             info[key] = m.group(1).strip()
 
+    # Direct Configuration Item or Pattern Match: -HOST||CIRCUIT or HOST||CIRCUIT
+    m_pipe = re.search(r"([A-Za-z0-9_-]+)\s*\|\|\s*([A-Za-z0-9_-]+)", raw_text)
+    if m_pipe:
+        cand_host = m_pipe.group(1).lstrip("-").strip()
+        cand_circ = m_pipe.group(2).strip()
+        if not info["hostname"]:
+            info["hostname"] = cand_host
+        if not info["circuit"]:
+            info["circuit"] = cand_circ
+
+    # NMS Alert format: "SD-WAN Datapath Down from <SOURCE_DC> to <TARGET_ROUTER>/<CIRCUIT>"
+    # Example: "SD-WAN Datapath Down from VC-RBI-GRP1-02-PDC/PGCIL-MPLS-RBI to IFT-RBI-3041-AHMBRF-R1/PGCIL-MPLS2-RBI"
+    m_sdwan_path = re.search(
+        r"SD-WAN\s+Datapath\s+Down\s+from\s+[^\s/]+(?:/[^\s]+)?\s+to\s+([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)",
+        raw_text,
+        re.IGNORECASE
+    )
+    if m_sdwan_path:
+        if not info["hostname"]:
+            info["hostname"] = m_sdwan_path.group(1).strip()
+        if not info["circuit"]:
+            info["circuit"] = m_sdwan_path.group(2).strip()
+
+    # Link Type field: "Link Type :- PGCIL-MPLS2-RBI" or "Link Type : PGCIL-MPLS2-RBI"
+    m_link_type = re.search(r"Link\s*Type\s*[:-]+\s*([A-Za-z0-9_-]+)", raw_text, re.IGNORECASE)
+    if m_link_type and not info["circuit"]:
+        info["circuit"] = m_link_type.group(1).strip()
+
+    # Management IP or Subnet: "Management IP :- 10.128.199.14/30" or "Management IP : 10.128.199.14"
+    m_mgmt_ip = re.search(r"Management\s*IP\s*[:-]+\s*([0-9.]+)(?:/\d+)?", raw_text, re.IGNORECASE)
+    if m_mgmt_ip:
+        parsed_ip = m_mgmt_ip.group(1).strip()
+        # In point-to-point /30, this IP can be the WAN Peer IP or Local IP
+        if not info["peer_ip"]:
+            info["peer_ip"] = parsed_ip
+
+    # BSO ID / CKT ID: "BSO ID :- SN-VNO-02219591 // PGCIL CKT ID - 24950"
+    m_bso = re.search(r"BSO\s*ID\s*[:-]+\s*([^\r\n]+)", raw_text, re.IGNORECASE)
+    if m_bso and not info["circuit_id"]:
+        info["circuit_id"] = m_bso.group(1).strip()
+
+    # Problem ID / Trigger ID as Ticket Number fallback
+    m_orig_prob = re.search(r"(?:Original\s*problem\s*ID|Trigger\s*Id)\s*[:=]+\s*([0-9A-Za-z_-]+)", raw_text, re.IGNORECASE)
+    if m_orig_prob and not info["ticket_number"]:
+        info["ticket_number"] = m_orig_prob.group(1).strip()
+
+    # Problem started timestamp
+    m_start_time = re.search(r"Problem\s*started\s*at\s*([0-9:.]+\s*on\s*[0-9.]+)", raw_text, re.IGNORECASE)
+    if m_start_time and not info["alarm_start_date"]:
+        info["alarm_start_date"] = m_start_time.group(1).strip()
+
     # Derived extraction from Configuration Item
     if info["configuration_item"]:
         parts = [p.strip() for p in info["configuration_item"].split("||")]
@@ -149,6 +200,11 @@ def parse_ticket_email(raw_text):
             m_h = re.search(r"Problem:\s*([A-Za-z0-9_-]+)", info["title"], re.IGNORECASE)
             if m_h:
                 info["hostname"] = m_h.group(1).strip()
+
+    # Derive Transport VR if not yet populated
+    if not info["transport_vr"] and info["circuit"]:
+        circ_name = info["circuit"].strip()
+        info["transport_vr"] = f"{circ_name}-Transport-VR" if not circ_name.endswith("-VR") else circ_name
 
     # Calculate Local Source IP if peer IP exists (Odd/Even rule)
     if info["peer_ip"]:
