@@ -15,6 +15,7 @@ a = Analysis(
     hiddenimports=[
         'sleep_preventer',
         'ticket_analyzer_tab',
+        'flt_analyzer_tab',
         'dc_mesh_tab',
         'cid_checker_tab',
         'history_tab',

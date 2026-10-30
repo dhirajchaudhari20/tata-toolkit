@@ -1,4 +1,4 @@
-﻿"""
+"""
 ====================================================================================================
                         TATA COMMUNICATIONS - NETWORK OPERATIONS CENTER
             AUTOMATED VERSA SD-WAN ROUTER-TO-ROUTER DIAGNOSTICS & PING AUDIT (GUI)
@@ -422,6 +422,7 @@ class VersaRouterAuditGUI:
 
         self.tab_router = ttk.Frame(self.main_notebook)
         self.tab_ticket = ttk.Frame(self.main_notebook)
+        self.tab_flt = ttk.Frame(self.main_notebook)
         self.tab_cid = ttk.Frame(self.main_notebook)
         self.tab_dc_mesh = ttk.Frame(self.main_notebook)
         self.tab_history = ttk.Frame(self.main_notebook)
@@ -430,6 +431,7 @@ class VersaRouterAuditGUI:
         self._tabs_registry = [
             {"id": "router", "name": "📡 Versa Router Health Auditor", "frame": self.tab_router, "var": tk.BooleanVar(value=True)},
             {"id": "ticket", "name": "🎫 Ticket & Alert Diagnostics", "frame": self.tab_ticket, "var": tk.BooleanVar(value=True)},
+            {"id": "flt", "name": "🔬 FLT Analysis & RFO", "frame": self.tab_flt, "var": tk.BooleanVar(value=True)},
             {"id": "cid", "name": "⚡ TTBS CID Punchability Checker", "frame": self.tab_cid, "var": tk.BooleanVar(value=True)},
             {"id": "dc_mesh", "name": "🏢 DC to Branch Mesh Ping", "frame": self.tab_dc_mesh, "var": tk.BooleanVar(value=True)},
             {"id": "history", "name": "🕒 Audit History & Past Records", "frame": self.tab_history, "var": tk.BooleanVar(value=True)},
@@ -463,6 +465,15 @@ class VersaRouterAuditGUI:
             self.ticket_frame.pack(fill="both", expand=True)
         except Exception as e:
             err_box = ttk.Label(self.tab_ticket, text=f"Could not load Ticket & Alert Diagnostics:\n{e}", foreground="red", padding=20)
+            err_box.pack()
+
+        # Initialize Tab 3: FLT Analysis & RFO Engine
+        try:
+            from flt_analyzer_tab import FltAnalyzerFrame
+            self.flt_frame = FltAnalyzerFrame(self.tab_flt, root=self.root, parent_gui=self)
+            self.flt_frame.pack(fill="both", expand=True)
+        except Exception as e:
+            err_box = ttk.Label(self.tab_flt, text=f"Could not load FLT Analysis & RFO Module:\n{e}", foreground="red", padding=20)
             err_box.pack()
 
         # Initialize Tab 2: CID Punchability Checker
