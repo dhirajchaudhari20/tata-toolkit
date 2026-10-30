@@ -1187,32 +1187,37 @@ class DCMeshPingFrame(ttk.Frame):
         time.sleep(0.3)
         controller.send_enter(wait_after=1.0)
         out = controller.copy_terminal_output() or ""
+        last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
 
         # Step 1: If currently inside any router CLI, exit back to Director
-        if "-cli>" in out:
+        if "-cli>" in last_lines and "@VD-" not in last_lines:
             self.append_log("[*] Inside router CLI. Exiting to router shell...\n")
             controller.send_command("exit", wait_after=2.0)
             out = controller.copy_terminal_output() or ""
+            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
 
-        if "[admin@" in out and ": ~]" in out:
+        if "[admin@" in last_lines and ": ~]" in last_lines and "VD-" not in last_lines:
             self.append_log("[*] Inside router shell. Exiting back to Director...\n")
             controller.send_command("exit", wait_after=2.5)
             out = controller.copy_terminal_output() or ""
+            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
 
         # Step 2: If at Bastion shell, SSH to Director
-        if "10.29.11.32" not in out and "VD-" not in out:
+        if "10.29.11.32" not in last_lines and "VD-" not in last_lines:
             self.append_log(f"[*] At Bastion prompt. SSH to Versa Director ({director_ip})...\n")
             controller.send_command(f"ssh -l {director_user} {director_ip}", wait_after=3.0)
             controller.send_command(director_pass, wait_after=5.0, is_password=True)
             out = controller.copy_terminal_output() or ""
+            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
 
         # Step 3: If in Director Linux bash, enter CLI
-        if "admin@VD-" in out or ":~$" in out:
+        if "admin@VD-" in last_lines or (":~$" in last_lines and "VD-" in last_lines):
             self.append_log("[*] In Director shell. Entering Director CLI...\n")
             controller.send_command("cli", wait_after=4.0)
             controller.send_command("set paginate false", wait_after=1.5)
             out = controller.copy_terminal_output() or ""
-        elif "Administrator@VD-" in out:
+            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
+        elif "Administrator@VD-" in last_lines:
             controller.send_command("set paginate false", wait_after=1.0)
 
         # Step 4: Resolve target DC router IP

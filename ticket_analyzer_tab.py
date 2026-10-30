@@ -921,11 +921,15 @@ class TicketAnalyzerFrame(ttk.Frame):
                 self.command_outputs["uptime"] = self._clean_cli_output(out, cmd)
                 self.append_log(f"[✓] Captured System Uptime.\n")
 
-            # Exit router session cleanly (write exit 3 times to ensure router CLI and shell are exited safely)
-            self.append_log("\n[*] Safely disconnecting router session (3x exit)...\n")
-            controller.send_command("exit", wait_after=1.5)
-            controller.send_command("exit", wait_after=1.5)
-            controller.send_command("exit", wait_after=2.0)
+            # Safely disconnect router session back to Versa Director
+            self.append_log("\n[*] Returning to Versa Director prompt...\n")
+            for _ in range(3):
+                out = controller.copy_terminal_output() or ""
+                last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
+                if "admin@VD-" in last_lines or "Administrator@VD-" in last_lines or "@VD-" in last_lines:
+                    self.append_log("[✓] Confirmed back at Versa Director prompt.\n")
+                    break
+                controller.send_command("exit", wait_after=1.5)
 
             # Generate Executive Customer Update Message
             customer_msg = self._generate_customer_message(
@@ -956,29 +960,36 @@ class TicketAnalyzerFrame(ttk.Frame):
         time.sleep(0.3)
         controller.send_enter(wait_after=1.0)
         out = controller.copy_terminal_output() or ""
+        last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
 
-        # If inside another router CLI, exit
-        if "-cli>" in out:
+        # If inside another router CLI (not Director), exit back
+        if "-cli>" in last_lines and "@VD-" not in last_lines:
+            self.append_log("[*] Detected active router CLI prompt. Exiting to router shell...\n")
             controller.send_command("exit", wait_after=2.0)
             out = controller.copy_terminal_output() or ""
+            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
 
-        if "[admin@" in out and ": ~]" in out:
+        if "[admin@" in last_lines and ": ~]" in last_lines and "VD-" not in last_lines:
+            self.append_log("[*] Detected router Linux shell. Exiting back to Director...\n")
             controller.send_command("exit", wait_after=2.0)
             out = controller.copy_terminal_output() or ""
+            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
 
-        # If at Bastion prompt, SSH to Director
-        if "10.29.11.32" not in out and "VD-" not in out:
+        # If at Bastion prompt (neither 10.29.11.32 nor Director VD- prompt in recent lines), SSH to Director
+        if "10.29.11.32" not in last_lines and "VD-" not in last_lines:
             self.append_log(f"[*] SSH into Versa Director ({director_ip})...\n")
             controller.send_command(f"ssh -l {director_user} {director_ip}", wait_after=3.0)
             controller.send_command(director_pass, wait_after=5.0, is_password=True)
             out = controller.copy_terminal_output() or ""
+            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
 
         # Enter Director CLI if in shell
-        if "admin@VD-" in out or ":~$" in out:
+        if "admin@VD-" in last_lines or (":~$" in last_lines and "VD-" in last_lines):
             controller.send_command("cli", wait_after=4.0)
             controller.send_command("set paginate false", wait_after=1.5)
             out = controller.copy_terminal_output() or ""
-        elif "Administrator@VD-" in out:
+            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
+        elif "Administrator@VD-" in last_lines:
             controller.send_command("set paginate false", wait_after=1.0)
 
         # Resolve Branch Router IP from Director device list
