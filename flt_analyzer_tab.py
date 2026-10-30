@@ -444,10 +444,16 @@ Link Type :- TCL-MPLS1-MB"""
             self.command_outputs["port_ident"] = self._clean_cli_output(out1, cmd1)
             self.append_log(f"[✓] Captured Port Identification.\n")
 
-            # Try to auto-extract VNI port from Command 1 output (e.g. vni-0/0.0)
+            # Auto-extract Transport VR and VNI from Command 1 output
+            m_vr = re.search(r"\b([A-Za-z0-9_-]+-Transport-VR)\b", self.command_outputs["port_ident"])
+            if m_vr:
+                vr = m_vr.group(1).strip()
+                self.var_vr.set(vr)
+                self.append_log(f"[✓] Auto-detected Transport VR from Port: {vr}\n")
+
             m_vni = re.search(r"\b(vni-[0-9/.]+)\b", self.command_outputs["port_ident"])
             if m_vni:
-                vni_found = m_vni.group(1)
+                vni_found = m_vni.group(1).strip()
                 self.var_port_vni.set(vni_found)
                 self.append_log(f"[✓] Auto-detected Port Interface: {vni_found}\n")
 
@@ -460,13 +466,14 @@ Link Type :- TCL-MPLS1-MB"""
             self.command_outputs["bgp_vr"] = self._clean_cli_output(out2, cmd2)
             self.append_log(f"[✓] Captured VR BGP Status.\n")
 
-            # Extract Peer IP from BGP if not entered
-            if not peer_ip:
-                m_peer = re.search(r"\n(\b10\.\d+\.\d+\.\d+\b)\s+\d+", self.command_outputs["bgp_vr"])
-                if m_peer:
-                    peer_ip = m_peer.group(1)
+            # Extract Peer IP from Command 2 output if not entered or to guarantee accuracy
+            for l in self.command_outputs["bgp_vr"].splitlines():
+                parts = l.strip().split()
+                if parts and re.match(r"^\d+\.\d+\.\d+\.\d+$", parts[0]):
+                    peer_ip = parts[0].strip()
                     self.var_peer_ip.set(peer_ip)
-                    self.append_log(f"[✓] Auto-detected Peer IP from BGP: {peer_ip}\n")
+                    self.append_log(f"[✓] Auto-detected Neighbor Peer IP from BGP: {peer_ip}\n")
+                    break
 
             # Command 3: Port Alarms
             # show alarms all | match <date> | match <port_vni>
@@ -684,7 +691,11 @@ Link Type :- TCL-MPLS1-MB"""
         sla_clean = "\n".join(sla_filtered_lines)
 
         summary = []
-        summary.append(f"During the incident window, the site experienced an SDWAN connectivity disruption with HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations.\n")
+        summary.append("Dear Team,\n")
+        if t_start and t_start != "Alarm Start Time":
+            summary.append(f"During the incident window from {t_start} to {t_end}, the site experienced an SDWAN connectivity disruption with HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations.\n")
+        else:
+            summary.append(f"During the incident window, the site experienced an SDWAN connectivity disruption with HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations.\n")
         summary.append("WAN interface status observed Up/down/flapping frequently. The local-loop BGP session between the CPE and PE is Up/Down/Flapping//Down and up now.\n")
         summary.append("ISP recommended to restore circuit with stability, identify the root cause, and provide RFO.\n")
         summary.append(f"{'='*75}\n")
