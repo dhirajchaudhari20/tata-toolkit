@@ -439,18 +439,26 @@ Link Type :- TCL-MPLS1-MB"""
             # show orgs org <ORG>-NET sd-wan sla-monitor status-down | tab | match <circuit>
             cmd_sla = f"show orgs org {org}-NET sd-wan sla-monitor status-down | tab | match {circuit}"
             self.append_log(f"\n[*] [1/6] SD-WAN SLA Monitor Down (First Run): {cmd_sla}\n")
-            controller.send_command(cmd_sla, wait_after=1.5)
-            out_sla = self._wait_prompt(controller, cmd=cmd_sla, max_timeout=25.0)
-            self.command_outputs["sla_down"] = self._clean_cli_output(out_sla, cmd_sla)
+            out_sla, err = self._execute_cmd_with_retry(controller, cmd_sla, max_timeout=25.0, max_tries=2)
+            if err:
+                self.append_log(f"[!] {err}\n")
+                self._safe_disconnect_to_bastion(controller)
+                self._finish_flt(success=False, error_msg=err)
+                return
+            self.command_outputs["sla_down"] = out_sla or ""
             self.append_log(f"[✓] Captured SLA Monitor Status-Down.\n")
 
             # Command 2: Port Identification
             # show interfaces brief | match <circuit> | except 172
             cmd1 = f"show interfaces brief | match {circuit} | except 172"
             self.append_log(f"\n[*] [2/6] Port Identification: {cmd1}\n")
-            controller.send_command(cmd1, wait_after=1.5)
-            out1 = self._wait_prompt(controller, cmd=cmd1, max_timeout=20.0)
-            self.command_outputs["port_ident"] = self._clean_cli_output(out1, cmd1)
+            out1, err = self._execute_cmd_with_retry(controller, cmd1, max_timeout=20.0, max_tries=2)
+            if err:
+                self.append_log(f"[!] {err}\n")
+                self._safe_disconnect_to_bastion(controller)
+                self._finish_flt(success=False, error_msg=err)
+                return
+            self.command_outputs["port_ident"] = out1 or ""
             self.append_log(f"[✓] Captured Port Identification.\n")
 
             # Auto-extract Transport VR and VNI from Port output
@@ -470,9 +478,13 @@ Link Type :- TCL-MPLS1-MB"""
             # show bgp neighbor brief <VR>
             cmd2 = f"show bgp neighbor brief {vr}"
             self.append_log(f"\n[*] [3/6] Specific VR BGP Status: {cmd2}\n")
-            controller.send_command(cmd2, wait_after=1.5)
-            out2 = self._wait_prompt(controller, cmd=cmd2, max_timeout=20.0)
-            self.command_outputs["bgp_vr"] = self._clean_cli_output(out2, cmd2)
+            out2, err = self._execute_cmd_with_retry(controller, cmd2, max_timeout=20.0, max_tries=2)
+            if err:
+                self.append_log(f"[!] {err}\n")
+                self._safe_disconnect_to_bastion(controller)
+                self._finish_flt(success=False, error_msg=err)
+                return
+            self.command_outputs["bgp_vr"] = out2 or ""
             self.append_log(f"[✓] Captured VR BGP Status.\n")
 
             # Extract Peer IP from BGP output if not entered or to guarantee accuracy
@@ -489,9 +501,13 @@ Link Type :- TCL-MPLS1-MB"""
             port_vni = self.var_port_vni.get().strip() or "vni"
             cmd3 = f"show alarms all | match {today_str} | match {port_vni}"
             self.append_log(f"\n[*] [4/6] Port Alarms: {cmd3}\n")
-            controller.send_command(cmd3, wait_after=1.5)
-            out3 = self._wait_prompt(controller, cmd=cmd3, max_timeout=20.0)
-            self.command_outputs["port_alarms"] = self._clean_cli_output(out3, cmd3)
+            out3, err = self._execute_cmd_with_retry(controller, cmd3, max_timeout=20.0, max_tries=2)
+            if err:
+                self.append_log(f"[!] {err}\n")
+                self._safe_disconnect_to_bastion(controller)
+                self._finish_flt(success=False, error_msg=err)
+                return
+            self.command_outputs["port_alarms"] = out3 or ""
             self.append_log(f"[✓] Captured Port Alarms.\n")
 
             # Command 5: BGP Alarms
@@ -501,9 +517,13 @@ Link Type :- TCL-MPLS1-MB"""
             else:
                 cmd4 = f"show alarms all | match {today_str} | match bgp"
             self.append_log(f"\n[*] [5/6] BGP Alarms: {cmd4}\n")
-            controller.send_command(cmd4, wait_after=1.5)
-            out4 = self._wait_prompt(controller, cmd=cmd4, max_timeout=20.0)
-            self.command_outputs["bgp_alarms"] = self._clean_cli_output(out4, cmd4)
+            out4, err = self._execute_cmd_with_retry(controller, cmd4, max_timeout=20.0, max_tries=2)
+            if err:
+                self.append_log(f"[!] {err}\n")
+                self._safe_disconnect_to_bastion(controller)
+                self._finish_flt(success=False, error_msg=err)
+                return
+            self.command_outputs["bgp_alarms"] = out4 or ""
             self.append_log(f"[✓] Captured BGP Alarms.\n")
 
             # Command 6: SD-WAN Detail Hub
@@ -511,21 +531,17 @@ Link Type :- TCL-MPLS1-MB"""
             if hub_name:
                 cmd6 = f"show orgs org {org}-NET sd-wan detail {hub_name} | match {circuit}"
                 self.append_log(f"\n[*] [6/6] SD-WAN Detail for Hub {hub_name}: {cmd6}\n")
-                controller.send_command(cmd6, wait_after=1.5)
-                out6 = self._wait_prompt(controller, cmd=cmd6, max_timeout=25.0)
-                self.command_outputs["sdwan_detail"] = self._clean_cli_output(out6, cmd6)
+                out6, err = self._execute_cmd_with_retry(controller, cmd6, max_timeout=25.0, max_tries=2)
+                if err:
+                    self.append_log(f"[!] {err}\n")
+                    self._safe_disconnect_to_bastion(controller)
+                    self._finish_flt(success=False, error_msg=err)
+                    return
+                self.command_outputs["sdwan_detail"] = out6 or ""
                 self.append_log(f"[✓] Captured SD-WAN Detail.\n")
 
-            # Disconnect cleanly all the way back to Bastion mcpeuser
-            self.append_log("\n[*] Disconnecting nested router sessions back to Bastion mcpeuser...\n")
-            for _ in range(6):
-                out = controller.copy_terminal_output() or ""
-                last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
-                if "mcpeuser" in last_lines or "PU1PAMMCPSGW" in last_lines or "[mcpeuser" in last_lines:
-                    self.append_log("[✓] Confirmed back at Bastion prompt (mcpeuser).\n")
-                    break
-                controller.send_command("exit", wait_after=1.5)
-            self.append_log("[✓] Session disconnection sequence completed.\n")
+            # Disconnect cleanly all the way back to Bastion mcpeuser (4-5 exits)
+            self._safe_disconnect_to_bastion(controller)
 
             # Generate Executive FLT Communication Summary
             flt_summary = self._generate_flt_summary()
@@ -542,7 +558,44 @@ Link Type :- TCL-MPLS1-MB"""
             self.append_log(f"\n[!] Unexpected Error during FLT Audit: {e}\n")
             self._finish_flt(success=False, error_msg=str(e))
 
-    def _detect_session_state(self, controller):
+    def _execute_cmd_with_retry(self, controller, cmd, max_timeout=20.0, max_tries=2):
+        """
+        Executes a command on the terminal controller with retry (up to max_tries, e.g. 2).
+        If an error prompt or failure is observed after 2 tries, returns None and error message.
+        """
+        for attempt in range(1, max_tries + 1):
+            if self.stop_event.is_set():
+                return None, "Aborted by user"
+            controller.send_command(cmd, wait_after=1.5)
+            out = self._wait_prompt(controller, cmd=cmd, max_timeout=max_timeout)
+            cleaned = self._clean_cli_output(out, cmd)
+            # Check for critical execution errors in command output
+            has_error = False
+            for line in cleaned.splitlines():
+                ll = line.lower()
+                if "syntax error:" in ll or "[error]" in ll or "command not found" in ll or "unknown command" in ll:
+                    has_error = True
+                    break
+            if not has_error and cleaned != "No output captured.":
+                return cleaned, None
+            if attempt < max_tries:
+                self.append_log(f"[!] Warning: Issue executing '{cmd}', retrying ({attempt+1}/{max_tries})...\n")
+                time.sleep(1.0)
+            else:
+                return cleaned, f"Error observed after command: {cmd}. Check manually."
+        return None, f"Error observed after command: {cmd}. Check manually."
+
+    def _safe_disconnect_to_bastion(self, controller):
+        """Cleanly issues exit commands (up to 4-5 times) back to bastion jump host."""
+        self.append_log("\n[*] Disconnecting nested router sessions back to Bastion mcpeuser...\n")
+        for _ in range(5):
+            out = controller.copy_terminal_output() or ""
+            last_lines = "\n".join([l.strip() for l in out.strip().splitlines()[-4:] if l.strip()])
+            if "mcpeuser" in last_lines or "PU1PAMMCPSGW" in last_lines or "[mcpeuser" in last_lines:
+                self.append_log("[✓] Confirmed back at Bastion prompt (mcpeuser).\n")
+                break
+            controller.send_command("exit", wait_after=1.2)
+        self.append_log("[✓] Session disconnection sequence completed.\n")
         """
         Inspects the very latest active prompt line in the PuTTY terminal to determine exact session state:
         - 'router_cli'     : inside branch router CLI prompt (e.g. admin@BRANCH-cli>)
@@ -687,7 +740,14 @@ Link Type :- TCL-MPLS1-MB"""
     def _detect_wan_status(self, port_out, port_alarms):
         """
         Dynamically determine WAN interface status from CLI outputs.
-        Returns one of: 'Up', 'Down', 'Up/down/flapping frequently'
+        Manager rule:
+        - If alarm output found:
+          - If crosses 2 time transitions/alarm records (> 2 alarms) -> "Up/down/flapping frequently"
+          - If 1 or 2 transitions -> "Up/down/flapping frequently" or "Down and up now" (if currently up)
+        - If currently up and alarms present -> "Up/down/flapping frequently"
+        - If currently down and alarms present -> "Down"
+        - If currently up and no alarms -> "Up"
+        - If currently down and no alarms -> "Down"
         """
         # Parse interface line: NAME  MAC  OPER  ADMIN  TENANT  VRF  IP
         is_port_up = False
@@ -711,23 +771,29 @@ Link Type :- TCL-MPLS1-MB"""
             and "cli>" not in l
             and "[ok]" not in l
         ]
-        has_port_alarms = len(alarm_data_lines) > 0
+        alarm_count = len(alarm_data_lines)
 
-        if has_port_alarms and is_port_up:
+        if alarm_count > 2 and is_port_up:
             return "Up/down/flapping frequently"
-        elif has_port_alarms and is_port_down:
+        elif alarm_count > 0 and is_port_up:
+            return "Up/down/flapping frequently"
+        elif alarm_count > 0 and is_port_down:
             return "Down"
         elif is_port_up:
             return "Up"
         elif is_port_down:
             return "Down"
         else:
-            return "Up/down/flapping frequently"
+            return "Up"
 
     def _detect_bgp_status(self, bgp_out, bgp_alarms):
         """
         Dynamically determine BGP session status from CLI outputs.
-        Returns one of: 'Up', 'Down', 'Down and up now', 'Flapping'
+        Manager rule:
+        - If currently up and alarm records > 2 -> "Up/down/flapping frequently"
+        - If currently up and alarm records in 1..2 -> "Down and up now"
+        - If currently down -> "Down"
+        - If currently up and no alarms -> "Up"
         """
         is_bgp_up = False
         is_bgp_down = False
@@ -748,19 +814,22 @@ Link Type :- TCL-MPLS1-MB"""
             and "cli>" not in l
             and "[ok]" not in l
         ]
-        has_bgp_alarms = len(bgp_alarm_data) > 0
+        alarm_count = len(bgp_alarm_data)
 
-        if has_bgp_alarms and is_bgp_up:
-            return "Down and up now"
-        elif has_bgp_alarms and is_bgp_down:
-            return "Down"
-        elif has_bgp_alarms:
-            return "Flapping"
-        elif is_bgp_up:
-            return "Up"
+        if is_bgp_up:
+            if alarm_count > 2:
+                return "Up/down/flapping frequently"
+            elif alarm_count >= 1:
+                return "Down and up now"
+            else:
+                return "Up"
         elif is_bgp_down:
             return "Down"
         else:
+            if alarm_count > 2:
+                return "Up/down/flapping frequently"
+            elif alarm_count >= 1:
+                return "Down and up now"
             return "Down"
 
     def _generate_flt_summary(self):
