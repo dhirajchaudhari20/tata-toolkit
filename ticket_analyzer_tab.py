@@ -502,18 +502,28 @@ class TicketAnalyzerFrame(ttk.Frame):
         self.ticket_input_text.pack(fill="both", expand=True, pady=(0, 4))
         self.ticket_input_text.bind("<KeyRelease>", lambda e: self.on_text_changed())
 
-        # Parsed Information Cards / Grid
-        summary_frame = ttk.LabelFrame(left_box, text=" 🔍 Parsed Incident & Target Parameters ", padding=6)
+        # Parsed Information Cards / Grid (Editable Entries with Labels)
+        summary_frame = ttk.LabelFrame(left_box, text=" 🔍 Parsed Incident & Target Parameters (Editable) ", padding=6)
         summary_frame.pack(fill="x", pady=(2, 0))
 
-        self.lbl_tkt_no = self._create_param_row(summary_frame, "Ticket Number:", 0)
-        self.lbl_hostname = self._create_param_row(summary_frame, "Target Hostname:", 1)
-        self.lbl_circuit = self._create_param_row(summary_frame, "Access Circuit:", 2)
-        self.lbl_vr = self._create_param_row(summary_frame, "Transport VR:", 3)
-        self.lbl_peer = self._create_param_row(summary_frame, "BGP Peer IP:", 4)
-        self.lbl_src = self._create_param_row(summary_frame, "Local Source IP:", 5)
-        self.lbl_cid = self._create_param_row(summary_frame, "ISP Circuit ID:", 6)
-        self.lbl_location = self._create_param_row(summary_frame, "Location / City:", 7)
+        # StringVars for two-way binding & direct editing by user
+        self.var_tkt_no   = tk.StringVar(value="")
+        self.var_hostname = tk.StringVar(value="")
+        self.var_circuit  = tk.StringVar(value="")
+        self.var_vr       = tk.StringVar(value="")
+        self.var_peer     = tk.StringVar(value="")
+        self.var_src      = tk.StringVar(value="")
+        self.var_cid      = tk.StringVar(value="")
+        self.var_location = tk.StringVar(value="")
+
+        self.entry_tkt_no   = self._create_param_entry(summary_frame, "Ticket Number:", self.var_tkt_no, 0)
+        self.entry_hostname = self._create_param_entry(summary_frame, "Target Hostname:", self.var_hostname, 1, bold=True, fg="#16a34a")
+        self.entry_circuit  = self._create_param_entry(summary_frame, "Access Circuit:", self.var_circuit, 2)
+        self.entry_vr       = self._create_param_entry(summary_frame, "Transport VR:", self.var_vr, 3)
+        self.entry_peer     = self._create_param_entry(summary_frame, "BGP Peer IP:", self.var_peer, 4, bold=True, fg="#dc2626")
+        self.entry_src      = self._create_param_entry(summary_frame, "Local Source IP:", self.var_src, 5)
+        self.entry_cid      = self._create_param_entry(summary_frame, "ISP Circuit ID:", self.var_cid, 6)
+        self.entry_location = self._create_param_entry(summary_frame, "Location / City:", self.var_location, 7)
 
         # ── RIGHT PANE: Tabs for Output Message, Diagnostics, and Raw Logs ──
         right_box = ttk.Frame(paned, padding=4)
@@ -558,11 +568,21 @@ class TicketAnalyzerFrame(ttk.Frame):
         log_scroll_x.pack(side="bottom", fill="x")
         self.log_text.pack(side="left", fill="both", expand=True)
 
-    def _create_param_row(self, parent, label_text, row_idx):
+    def _create_param_entry(self, parent, label_text, str_var, row_idx, bold=False, fg="#0369a1"):
         ttk.Label(parent, text=label_text, font=("Segoe UI", 8, "bold")).grid(row=row_idx, column=0, sticky="w", padx=2, pady=1)
-        lbl_val = tk.Label(parent, text="--", font=("Segoe UI", 8), fg="#0369a1", anchor="w")
-        lbl_val.grid(row=row_idx, column=1, sticky="w", padx=4, pady=1)
-        return lbl_val
+        font_spec = ("Segoe UI", 8, "bold") if bold else ("Segoe UI", 8)
+        ent = tk.Entry(
+            parent,
+            textvariable=str_var,
+            font=font_spec,
+            fg=fg,
+            bg="#ffffff",
+            relief="solid",
+            bd=1,
+            width=32
+        )
+        ent.grid(row=row_idx, column=1, sticky="w", padx=4, pady=1)
+        return ent
 
     # ── Preset Checkbox Selectors ──
     def _select_all_commands(self):
@@ -614,14 +634,14 @@ class TicketAnalyzerFrame(ttk.Frame):
 
     def _update_parsed_labels(self):
         d = self.parsed_data
-        self.lbl_tkt_no.config(text=d.get("ticket_number") or "--")
-        self.lbl_hostname.config(text=d.get("hostname") or "--", font=("Segoe UI", 8, "bold"), fg="#16a34a" if d.get("hostname") else "#0369a1")
-        self.lbl_circuit.config(text=d.get("circuit") or "--")
-        self.lbl_vr.config(text=d.get("transport_vr") or "--")
-        self.lbl_peer.config(text=d.get("peer_ip") or "--", font=("Segoe UI", 8, "bold"), fg="#dc2626" if d.get("peer_ip") else "#0369a1")
-        self.lbl_src.config(text=d.get("local_source_ip") or "--")
-        self.lbl_cid.config(text=d.get("circuit_id") or "--")
-        self.lbl_location.config(text=d.get("location") or "--")
+        self.var_tkt_no.set(d.get("ticket_number") or "")
+        self.var_hostname.set(d.get("hostname") or "")
+        self.var_circuit.set(d.get("circuit") or "")
+        self.var_vr.set(d.get("transport_vr") or "")
+        self.var_peer.set(d.get("peer_ip") or "")
+        self.var_src.set(d.get("local_source_ip") or "")
+        self.var_cid.set(d.get("circuit_id") or "")
+        self.var_location.set(d.get("location") or "")
 
     def paste_from_clipboard(self):
         try:
@@ -688,6 +708,35 @@ class TicketAnalyzerFrame(ttk.Frame):
             return
 
         self.parsed_data = parse_ticket_email(text)
+
+        # Allow user to directly modify or override parameters in the UI entries
+        user_host = self.var_hostname.get().strip()
+        user_circ = self.var_circuit.get().strip()
+        user_vr   = self.var_vr.get().strip()
+        user_peer = self.var_peer.get().strip()
+        user_src  = self.var_src.get().strip()
+        user_cid  = self.var_cid.get().strip()
+        user_loc  = self.var_location.get().strip()
+        user_tkt  = self.var_tkt_no.get().strip()
+
+        # If user manually edited entries, use those; otherwise use parsed values
+        if user_host:
+            self.parsed_data["hostname"] = user_host
+        if user_circ:
+            self.parsed_data["circuit"] = user_circ
+        if user_vr:
+            self.parsed_data["transport_vr"] = user_vr
+        if user_peer:
+            self.parsed_data["peer_ip"] = user_peer
+        if user_src:
+            self.parsed_data["local_source_ip"] = user_src
+        if user_cid:
+            self.parsed_data["circuit_id"] = user_cid
+        if user_loc:
+            self.parsed_data["location"] = user_loc
+        if user_tkt:
+            self.parsed_data["ticket_number"] = user_tkt
+
         self._update_parsed_labels()
 
         hostname = self.parsed_data.get("hostname")
