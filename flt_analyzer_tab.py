@@ -684,6 +684,85 @@ Link Type :- TCL-MPLS1-MB"""
             clean.append(line)
         return "\n".join(clean[:50]).strip()
 
+    def _detect_wan_status(self, port_out, port_alarms):
+        """
+        Dynamically determine WAN interface status from CLI outputs.
+        Returns one of: 'Up', 'Down', 'Up/down/flapping frequently'
+        """
+        # Parse interface line: NAME  MAC  OPER  ADMIN  TENANT  VRF  IP
+        is_port_up = False
+        is_port_down = False
+        for line in port_out.splitlines():
+            if line.strip() and "show" not in line and "cli>" not in line and "[ok]" not in line:
+                parts = line.split()
+                if len(parts) >= 4:
+                    oper = parts[2].lower()
+                    admin = parts[3].lower()
+                    if oper == "up" and admin == "up":
+                        is_port_up = True
+                    elif oper == "down" or admin == "down":
+                        is_port_down = True
+
+        # Check if there are any real alarm lines (exclude command echoes and prompt lines)
+        alarm_data_lines = [
+            l for l in port_alarms.splitlines()
+            if l.strip()
+            and "show alarms" not in l
+            and "cli>" not in l
+            and "[ok]" not in l
+        ]
+        has_port_alarms = len(alarm_data_lines) > 0
+
+        if has_port_alarms and is_port_up:
+            return "Up/down/flapping frequently"
+        elif has_port_alarms and is_port_down:
+            return "Down"
+        elif is_port_up:
+            return "Up"
+        elif is_port_down:
+            return "Down"
+        else:
+            return "Up/down/flapping frequently"
+
+    def _detect_bgp_status(self, bgp_out, bgp_alarms):
+        """
+        Dynamically determine BGP session status from CLI outputs.
+        Returns one of: 'Up', 'Down', 'Down and up now', 'Flapping'
+        """
+        is_bgp_up = False
+        is_bgp_down = False
+        for line in bgp_out.splitlines():
+            parts = line.strip().split()
+            if parts and re.match(r"^\d+\.\d+\.\d+\.\d+$", parts[0]) and len(parts) >= 6:
+                state_col = parts[5]
+                if state_col.isdigit():
+                    is_bgp_up = True   # Numeric PfxRcd = Established/Up
+                elif state_col.lower() in ["connect", "idle", "active", "opensent", "openconfirm"]:
+                    is_bgp_down = True
+
+        # Check BGP alarm lines
+        bgp_alarm_data = [
+            l for l in bgp_alarms.splitlines()
+            if l.strip()
+            and "show alarms" not in l
+            and "cli>" not in l
+            and "[ok]" not in l
+        ]
+        has_bgp_alarms = len(bgp_alarm_data) > 0
+
+        if has_bgp_alarms and is_bgp_up:
+            return "Down and up now"
+        elif has_bgp_alarms and is_bgp_down:
+            return "Down"
+        elif has_bgp_alarms:
+            return "Flapping"
+        elif is_bgp_up:
+            return "Up"
+        elif is_bgp_down:
+            return "Down"
+        else:
+            return "Down"
+
     def _generate_flt_summary(self):
         hn = self.var_hostname.get().strip() or "Target Router"
         circ = self.var_circuit.get().strip() or "Circuit"
@@ -692,22 +771,14 @@ Link Type :- TCL-MPLS1-MB"""
         hub_name = self.var_hub_name.get().strip() or "Location-A"
         hub_ip = self.var_hub_ip.get().strip() or "0.0.0.0"
 
-        # Determine BGP status & WAN status from captured outputs
-        bgp_out = self.command_outputs.get("bgp_vr", "")
+        # ── Real-time dynamic status analysis from captured CLI logs ──
         port_out = self.command_outputs.get("port_ident", "")
+        bgp_out  = self.command_outputs.get("bgp_vr", "")
+        port_alarms = self.command_outputs.get("port_alarms", "")
+        bgp_alarms  = self.command_outputs.get("bgp_alarms", "")
 
-        is_bgp_up = "Established" in bgp_out or ("Connect" not in bgp_out and "Idle" not in bgp_out and "Active" not in bgp_out and bgp_out)
-        is_port_up = " up " in port_out
-
-        if is_port_up:
-            wan_status = "Up"
-        else:
-            wan_status = "Down / Flapping"
-
-        if is_bgp_up:
-            bgp_status = "Down and up now (Recovered / Established)"
-        else:
-            bgp_status = "Down"
+        wan_status = self._detect_wan_status(port_out, port_alarms)
+        bgp_status = self._detect_bgp_status(bgp_out, bgp_alarms)
 
         # Filter out CGW- and VC- from SLA monitor output
         sla_raw = self.command_outputs.get("sla_down", "")
@@ -724,7 +795,7 @@ Link Type :- TCL-MPLS1-MB"""
             summary.append(f"During the incident window from {t_start} to {t_end}, the site experienced an SDWAN connectivity disruption with HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations.\n")
         else:
             summary.append(f"During the incident window, the site experienced an SDWAN connectivity disruption with HUB locations ({hub_name}, HUB End IP - {hub_ip}), and All other Hub Locations.\n")
-        summary.append("WAN interface status observed Up/down/flapping frequently. The local-loop BGP session between the CPE and PE is Up/Down/Flapping//Down and up now.\n")
+        summary.append(f"WAN interface status observed {wan_status}. The local-loop BGP session between the CPE and PE is {bgp_status}.\n")
         summary.append("ISP recommended to restore circuit with stability, identify the root cause, and provide RFO.\n")
         summary.append(f"{'='*75}\n")
         summary.append(f"TECHNICAL VERIFICATION & AUDIT LOGS ({hn} | {circ}):\n")
