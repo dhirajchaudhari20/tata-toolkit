@@ -425,7 +425,13 @@ Link Type :- TCL-MPLS1-MB"""
             hub_name = self.var_hub_name.get().strip()
             today_str = datetime.now().strftime("%Y-%m-%d")
 
-            director_ip = self.director_ip_var.get().strip() or "10.29.11.32"
+            # Alarm date string: check if input alarm start date has YYYY-MM-DD, otherwise use today's date
+            alarm_date_str = today_str
+            t_start_val = self.var_alarm_start.get().strip()
+            m_date = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", t_start_val)
+            if m_date:
+                alarm_date_str = m_date.group(1).strip()
+            self.append_log(f"[*] Audit Alarm Filter Date: {alarm_date_str}\n")
             director_user = self.director_user_var.get().strip() or "admin"
             director_pass = self.director_pass_var.get().strip() or "e#mi$Wp@U8%f"
 
@@ -499,7 +505,7 @@ Link Type :- TCL-MPLS1-MB"""
             # Command 4: Port Alarms
             # show alarms all | match <date> | match <port_vni>
             port_vni = self.var_port_vni.get().strip() or "vni"
-            cmd3 = f"show alarms all | match {today_str} | match {port_vni}"
+            cmd3 = f"show alarms all | match {alarm_date_str} | match {port_vni}"
             self.append_log(f"\n[*] [4/6] Port Alarms: {cmd3}\n")
             out3, err = self._execute_cmd_with_retry(controller, cmd3, max_timeout=20.0, max_tries=2)
             if err:
@@ -513,9 +519,9 @@ Link Type :- TCL-MPLS1-MB"""
             # Command 5: BGP Alarms
             # show alarms all | match <date> | match <peer_ip>
             if peer_ip:
-                cmd4 = f"show alarms all | match {today_str} | match {peer_ip}"
+                cmd4 = f"show alarms all | match {alarm_date_str} | match {peer_ip}"
             else:
-                cmd4 = f"show alarms all | match {today_str} | match bgp"
+                cmd4 = f"show alarms all | match {alarm_date_str} | match bgp"
             self.append_log(f"\n[*] [5/6] BGP Alarms: {cmd4}\n")
             out4, err = self._execute_cmd_with_retry(controller, cmd4, max_timeout=20.0, max_tries=2)
             if err:

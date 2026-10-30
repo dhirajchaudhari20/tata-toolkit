@@ -503,59 +503,6 @@ class VersaRouterAuditGUI:
             err_box = ttk.Label(self.tab_history, text=f"Could not load Audit History:\n{e}", foreground="red", padding=20)
             err_box.pack()
 
-    def _show_modules_menu(self):
-        """Displays a dropdown menu to toggle / open / close individual suite modules."""
-        menu = tk.Menu(self.root, tearoff=0, font=("Segoe UI", 9))
-        for tab_info in self._tabs_registry:
-            # Menu item with checkmark indicating visibility
-            menu.add_checkbutton(
-                label=f"  {tab_info['name']}",
-                variable=tab_info["var"],
-                command=lambda t=tab_info: self._toggle_module_tab(t)
-            )
-        menu.add_separator()
-        menu.add_command(label="  👁 Open All Modules", command=self._open_all_modules)
-        
-        # Position menu directly below the Modules Menu button
-        try:
-            x = self.modules_menu_btn.winfo_rootx()
-            y = self.modules_menu_btn.winfo_rooty() + self.modules_menu_btn.winfo_height() + 2
-            menu.tk_popup(x, y)
-        except Exception:
-            menu.tk_popup(self.root.winfo_pointerx(), self.root.winfo_pointery())
-
-    def _toggle_module_tab(self, tab_info):
-        """Shows or hides a tab in the notebook based on check state."""
-        frame = tab_info["frame"]
-        is_visible = tab_info["var"].get()
-        tabs_in_nb = self.main_notebook.tabs()
-        str_frame = str(frame)
-
-        if is_visible:
-            if str_frame not in tabs_in_nb:
-                # Re-add in natural registry order
-                # Find correct insert index based on order in _tabs_registry
-                self.main_notebook.add(frame, text=f"  {tab_info['name']}  ")
-                self.main_notebook.select(frame)
-        else:
-            # Prevent hiding if it is the only remaining visible tab
-            visible_count = sum(1 for t in self._tabs_registry if t["var"].get())
-            if visible_count == 0:
-                tab_info["var"].set(True)
-                messagebox.showinfo("Module Notice", "At least one module must remain visible.")
-                return
-            if str_frame in tabs_in_nb:
-                self.main_notebook.forget(frame)
-
-    def _open_all_modules(self):
-        """Re-enables and displays all suite module tabs."""
-        tabs_in_nb = self.main_notebook.tabs()
-        for tab_info in self._tabs_registry:
-            tab_info["var"].set(True)
-            frame = tab_info["frame"]
-            if str(frame) not in tabs_in_nb:
-                self.main_notebook.add(frame, text=f"  {tab_info['name']}  ")
-
         # ── Tab 1: Versa Router Audit Controls & Layout ──
         top_frame = ttk.LabelFrame(self.tab_router, text=" Versa SD-WAN & Network Configuration (Pre-configured) ", padding=10)
         top_frame.pack(side="top", fill="x", padx=6, pady=(4, 2))
@@ -1087,6 +1034,55 @@ class VersaRouterAuditGUI:
         self.log_text.pack(side="left", fill="both", expand=True)
         log_scroll.pack(side="right", fill="y")
 
+    def _show_modules_menu(self):
+        """Displays a dropdown menu to toggle / open / close individual suite modules."""
+        menu = tk.Menu(self.root, tearoff=0, font=("Segoe UI", 9))
+        for tab_info in self._tabs_registry:
+            # Menu item with checkmark indicating visibility
+            menu.add_checkbutton(
+                label=f"  {tab_info['name']}",
+                variable=tab_info["var"],
+                command=lambda t=tab_info: self._toggle_module_tab(t)
+            )
+        menu.add_separator()
+        menu.add_command(label="  👁 Open All Modules", command=self._open_all_modules)
+        
+        # Position menu directly below the Modules Menu button
+        try:
+            x = self.modules_menu_btn.winfo_rootx()
+            y = self.modules_menu_btn.winfo_rooty() + self.modules_menu_btn.winfo_height() + 2
+            menu.tk_popup(x, y)
+        except Exception:
+            menu.tk_popup(self.root.winfo_pointerx(), self.root.winfo_pointery())
+
+    def _toggle_module_tab(self, tab_info):
+        """Shows or hides a tab in the notebook based on check state."""
+        frame = tab_info["frame"]
+        is_visible = tab_info["var"].get()
+        tabs_in_nb = self.main_notebook.tabs()
+        str_frame = str(frame)
+
+        if is_visible:
+            if str_frame not in tabs_in_nb:
+                self.main_notebook.add(frame, text=f"  {tab_info['name']}  ")
+                self.main_notebook.select(frame)
+        else:
+            visible_count = sum(1 for t in self._tabs_registry if t["var"].get())
+            if visible_count == 0:
+                tab_info["var"].set(True)
+                messagebox.showinfo("Module Notice", "At least one module must remain visible.")
+                return
+            if str_frame in tabs_in_nb:
+                self.main_notebook.forget(frame)
+
+    def _open_all_modules(self):
+        """Re-enables and displays all suite module tabs."""
+        tabs_in_nb = self.main_notebook.tabs()
+        for tab_info in self._tabs_registry:
+            tab_info["var"].set(True)
+            frame = tab_info["frame"]
+            if str(frame) not in tabs_in_nb:
+                self.main_notebook.add(frame, text=f"  {tab_info['name']}  ")
 
     def _show_tree_context_menu(self, event):
         item = self.tree.identify_row(event.y)
